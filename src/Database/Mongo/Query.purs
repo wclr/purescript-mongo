@@ -31,8 +31,8 @@ import Record.Builder (Builder)
 import Record.Builder as Builder
 import Simple.JSON (class WriteForeign, write)
 import Type.Prelude (class IsSymbol, RLProxy(..), SProxy(..))
-import Type.Row (Cons, Nil, kind RowList, class RowToList)
-import Type.Row as Row
+import Prim.RowList (Cons, Nil, kind RowList, class RowToList)
+import Prim.Row as Row
 import Unsafe.Coerce (unsafeCoerce)
 
 foreign import data Query :: Type -> Type

@@ -27,3 +27,24 @@ searchQuery = Q.or
 ```
 
 It is checked during compile-time whether all the fields exist and have correct types.
+
+# installation
+
+For now, change your packages.dhall additions. 
+
+For example:
+
+let additions =
+  { mongo =
+      { dependencies =
+          [ "effect"
+          , "aff"
+          , "node-process"
+          , "simple-json"
+          ]
+      , repo =
+          "https://github.com/j-nava/purescript-mongo"
+      , version =
+          "master"
+      }
+  }
