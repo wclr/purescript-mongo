@@ -17,6 +17,7 @@ module Database.Mongo
   , defaultCountOptions
   , defaultAggregationOptions
   ) where
+
 import Prelude
 
 import Control.Bind (bindFlipped)
@@ -30,7 +31,8 @@ import Database.Mongo.Options (InsertOptions, UpdateOptions)
 import Database.Mongo.Query (Query)
 import Database.Mongo.Types (AggregationOptions, CountOptions, InsertWriteResult, FindOptions)
 import Effect (Effect)
-import Effect.Aff (Aff, Canceler, error, makeAff, nonCanceler)
+import Effect.Aff (Canceler, error, makeAff, nonCanceler)
+import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Exception (Error)
 import Foreign (Foreign)
 import Simple.JSON (class ReadForeign, class WriteForeign, read, undefined, write)
@@ -42,8 +44,8 @@ foreign import data Cursor :: Type
 
 -- | Connect to MongoDB using a url as documented at
 -- | docs.mongodb.org/manual/reference/connection-string/
-connect :: String -> Aff Client
-connect str = makeAff \cb ->
+connect :: ∀ m . MonadAff m => String -> m Client
+connect str = liftAff $ makeAff \cb ->
   runFn5 _connect str noopCancel cb Left Right
 
 -- | Get the default database
@@ -55,24 +57,24 @@ db :: String -> Client -> Database
 db = runFn2 __db
 
 -- | Close the connection to the database
-close :: Client -> Aff Unit
-close cli = makeAff \cb ->
+close :: ∀ m . MonadAff m => Client -> m Unit
+close cli = liftAff $ makeAff \cb ->
   runFn5 _close cli noopCancel cb Left Right
 
 -- | Fetch a specific collection by name
-collection :: ∀ a. String -> Database -> Aff (Collection a)
-collection name d = makeAff \cb ->
+collection :: ∀ a m. MonadAff m => String -> Database -> m (Collection a)
+collection name d = liftAff $ makeAff \cb ->
   runFn6 _collection name d noopCancel cb Left Right 
 
 -- | Fetches the an array of documents that match the query
-find :: ∀ a. ReadForeign a => Query a -> FindOptions -> Collection a -> Aff (Array a)
-find q opts col = makeAff find' >>= collect
+find :: ∀ a m. MonadAff m => ReadForeign a => Query a -> FindOptions -> Collection a -> m (Array a)
+find q opts col = liftAff $ makeAff find' >>= collect
   where
     find' cb = runFn7 _find (write q) opts col noopCancel cb Left Right
 
 -- | Fetches the first document that matches the query
-findOne :: ∀ a. ReadForeign a => Query a -> Collection a -> Aff a
-findOne q col = makeAff findOne'
+findOne :: ∀ a m. MonadAff m => ReadForeign a => Query a -> Collection a -> m a
+findOne q col = liftAff $ makeAff findOne'
   where
     findOne' cb =
       runFn7 _findOne (write q) undefined col noopCancel (cb <<< bindFlipped parse) Left Right
@@ -80,65 +82,65 @@ findOne q col = makeAff findOne'
 
 -- | Inserts a single document into MongoDB
 insertOne
-  :: ∀ a
-   . WriteForeign a
+  :: ∀ a m
+   . WriteForeign a => MonadAff m
   => a
   -> InsertOptions
   -> Collection a
-  -> Aff InsertWriteResult
-insertOne j o c = makeAff \cb ->
+  -> m InsertWriteResult
+insertOne j o c = liftAff $ makeAff \cb ->
   runFn8 _insert ApiCall.scalar (write j) (write o) c noopCancel cb Left Right
 
 -- | Inserts an array of documents into MongoDB
 insertMany
-  :: ∀ a
-   . WriteForeign a
+  :: ∀ a m
+   . WriteForeign a => MonadAff m
   => Array a
   -> InsertOptions
   -> Collection a
-  -> Aff InsertWriteResult
-insertMany j o c = makeAff \cb ->
+  -> m InsertWriteResult
+insertMany j o c = liftAff $ makeAff \cb ->
   runFn8 _insert ApiCall.vector (write j) (write o) c noopCancel cb Left Right
 
 -- | Update a single document in a collection
 updateOne
-  :: ∀ a
-   . WriteForeign a
+  :: ∀ a m
+   . WriteForeign a => MonadAff m
   => Query a
   -> a
   -> UpdateOptions
   -> Collection a
-  -> Aff InsertWriteResult
-updateOne q u o c = makeAff \cb ->
+  -> m InsertWriteResult
+updateOne q u o c = liftAff $ makeAff \cb ->
   runFn9 _update ApiCall.scalar (write q) (write u) (write o) c noopCancel cb Left Right
 
 -- | Update a single document in a collection
 updateMany
-  :: ∀ a
-   . WriteForeign a
+  :: ∀ a m
+   . WriteForeign a => MonadAff m
   => Query a
   -> a
   -> UpdateOptions
   -> Collection a
-  -> Aff InsertWriteResult
-updateMany q u o c = makeAff \cb ->
+  -> m InsertWriteResult
+updateMany q u o c = liftAff $ makeAff \cb ->
   runFn9 _update ApiCall.vector (write q) (write u) (write o) c noopCancel cb Left Right
 
 -- | Gets the number of documents matching the filter
-countDocuments :: ∀ a. Query a -> CountOptions -> Collection a -> Aff Int
-countDocuments q o col = makeAff \cb ->
+countDocuments :: ∀ a m. MonadAff m => Query a -> CountOptions -> Collection a -> m Int
+countDocuments q o col = liftAff $ makeAff \cb ->
   runFn7 _countDocuments (write q) o col noopCancel cb Left Right
 
 -- | WIP: implement typesafe aggregation pipelines
 -- | Calculates aggregate values for the data in a collection
 aggregate
-  :: ∀ a
-   . ReadForeign a
+  :: ∀ a m
+   . ReadForeign a => MonadAff m
   => Array Foreign
   -> AggregationOptions
   -> Collection a
-  -> Aff (Array a)
-aggregate p o col = makeAff aggregate' >>= collect
+  -> m (Array a)
+aggregate p o col = liftAff $ makeAff aggregate' >>= collect
   where
     aggregate' cb = runFn7 _aggregate p o col noopCancel cb Left Right
 
@@ -160,8 +162,8 @@ defaultAggregationOptions =
   , hint: null
   }
 
-collect :: ∀ a. ReadForeign a => Cursor -> Aff (Array a)
-collect cur = makeAff \cb ->
+collect :: ∀ a m. ReadForeign a => MonadAff m => Cursor -> m (Array a)
+collect cur = liftAff $ makeAff \cb ->
   runFn5 _collect cur noopCancel (cb <<< bindFlipped parse) Left Right
   where
     parse = lmap (error <<< show) <<< read
