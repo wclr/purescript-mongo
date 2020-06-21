@@ -12,27 +12,27 @@ type MongoError =
   }
 
 type InsertWriteResult =
-  { insertedCount :: Number
-  , result :: { ok :: Number, n :: Number }
+  { insertedCount :: Int
+  , result :: { ok :: Int, n :: Int }
   }
 
 type BulkWriteResult =
-  { ok :: Number
-  , nInserted :: Number
-  , nUpdated :: Number
-  , nUpserted :: Number
-  , nModified :: Number
-  , nRemoved :: Number
+  { ok :: Int
+  , nInserted :: Int
+  , nUpdated :: Int
+  , nUpserted :: Int
+  , nModified :: Int
+  , nRemoved :: Int
   }
 
 type WriteError =
-  { code :: Number
-  , index :: Number
+  { code :: Int
+  , index :: Int
   , errmsg :: String
   }
 
 type WriteConcernError =
-  { code :: Number
+  { code :: Int
   , errmsg :: String
   }
 
