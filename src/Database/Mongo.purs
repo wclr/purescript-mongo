@@ -16,6 +16,8 @@ module Database.Mongo
   , defaultFindOptions
   , defaultCountOptions
   , defaultAggregationOptions
+  , module Database.Mongo.Types
+  , module Database.Mongo.ObjectId
   ) where
 
 import Prelude
@@ -23,19 +25,18 @@ import Prelude
 import Control.Bind (bindFlipped)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
-import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn5, Fn6, Fn7, Fn8, Fn9, runFn1, runFn2, runFn5, runFn6, runFn7, runFn8, runFn9)
+import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn5, Fn6, Fn7, Fn8, runFn1, runFn2, runFn5, runFn6, runFn7, runFn8)
 import Data.Nullable (null)
-import Database.Mongo.ApiCall (ApiCall)
-import Database.Mongo.ApiCall as ApiCall
 import Database.Mongo.Options (InsertOptions, UpdateOptions)
 import Database.Mongo.Query (Query)
-import Database.Mongo.Types (AggregationOptions, CountOptions, InsertWriteResult, FindOptions)
+import Database.Mongo.Types (AggregationOptions, CountOptions, InsertOneResult, InsertManyResult, UpdateResult, FindOptions)
+import Database.Mongo.ObjectId (ObjectId)
 import Effect (Effect)
 import Effect.Aff (Canceler, error, makeAff, nonCanceler)
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Exception (Error)
 import Foreign (Foreign)
-import Simple.JSON (class ReadForeign, class WriteForeign, read, undefined, write)
+import Simple.JSON (class ReadForeign, class WriteForeign, read, write)
 
 foreign import data Client :: Type
 foreign import data Database :: Type
@@ -73,11 +74,11 @@ find q opts col = liftAff $ makeAff find' >>= collect
     find' cb = runFn7 _find (write q) opts col noopCancel cb Left Right
 
 -- | Fetches the first document that matches the query
-findOne :: ∀ a m. MonadAff m => ReadForeign a => Query a -> Collection a -> m a
-findOne q col = liftAff $ makeAff findOne'
+findOne :: ∀ a m. MonadAff m => ReadForeign a => Query a -> FindOptions -> Collection a -> m a
+findOne q opts col = liftAff $ makeAff findOne'
   where
     findOne' cb =
-      runFn7 _findOne (write q) undefined col noopCancel (cb <<< bindFlipped parse) Left Right
+      runFn7 _findOne (write q) opts col noopCancel (cb <<< bindFlipped parse) Left Right
     parse = lmap (error <<< show) <<< read
 
 -- | Inserts a single document into MongoDB
@@ -87,9 +88,9 @@ insertOne
   => a
   -> InsertOptions
   -> Collection a
-  -> m InsertWriteResult
+  -> m InsertOneResult
 insertOne j o c = liftAff $ makeAff \cb ->
-  runFn8 _insert ApiCall.scalar (write j) (write o) c noopCancel cb Left Right
+  runFn7 _insertOne (write j) (write o) c noopCancel cb Left Right
 
 -- | Inserts an array of documents into MongoDB
 insertMany
@@ -98,9 +99,9 @@ insertMany
   => Array a
   -> InsertOptions
   -> Collection a
-  -> m InsertWriteResult
+  -> m InsertManyResult
 insertMany j o c = liftAff $ makeAff \cb ->
-  runFn8 _insert ApiCall.vector (write j) (write o) c noopCancel cb Left Right
+  runFn7 _insertMany (write j) (write o) c noopCancel cb Left Right
 
 -- | Update a single document in a collection
 updateOne
@@ -110,9 +111,9 @@ updateOne
   -> a
   -> UpdateOptions
   -> Collection a
-  -> m InsertWriteResult
+  -> m UpdateResult
 updateOne q u o c = liftAff $ makeAff \cb ->
-  runFn9 _update ApiCall.scalar (write q) (write u) (write o) c noopCancel cb Left Right
+  runFn8 _updateOne (write q) (write u) (write o) c noopCancel cb Left Right
 
 -- | Update a single document in a collection
 updateMany
@@ -122,9 +123,9 @@ updateMany
   -> a
   -> UpdateOptions
   -> Collection a
-  -> m InsertWriteResult
+  -> m UpdateResult
 updateMany q u o c = liftAff $ makeAff \cb ->
-  runFn9 _update ApiCall.vector (write q) (write u) (write o) c noopCancel cb Left Right
+  runFn8 _updateMany (write q) (write u) (write o) c noopCancel cb Left Right
 
 -- | Gets the number of documents matching the filter
 countDocuments :: ∀ a m. MonadAff m => Query a -> CountOptions -> Collection a -> m Int
@@ -225,7 +226,7 @@ foreign import _collectOne ::
 
 foreign import _findOne :: ∀ a.
   Fn7 Foreign
-      Foreign
+      FindOptions
       (Collection a)
       (Collection a -> Canceler)
       (Either Error Foreign -> Effect Unit)
@@ -243,25 +244,48 @@ foreign import _find :: ∀ a.
       (Cursor -> Either Error Cursor)
       (Effect Canceler)
 
-foreign import _insert :: ∀ a.
-  Fn8 ApiCall
+foreign import _insertOne :: ∀ a.
+  Fn7 
       Foreign
       Foreign
       (Collection a)
       (Collection a -> Canceler)
-      (Either Error InsertWriteResult -> Effect Unit)
+      (Either Error InsertOneResult -> Effect Unit)
       (Error -> Either Error Foreign)
       (Foreign -> Either Error Foreign)
       (Effect Canceler)
 
-foreign import _update :: ∀ a.
-  Fn9 ApiCall
+foreign import _insertMany :: ∀ a.
+  Fn7 
+      Foreign
+      Foreign
+      (Collection a)
+      (Collection a -> Canceler)
+      (Either Error InsertManyResult -> Effect Unit)
+      (Error -> Either Error Foreign)
+      (Foreign -> Either Error Foreign)
+      (Effect Canceler)
+
+foreign import _updateOne :: ∀ a.
+  Fn8 
       Foreign
       Foreign
       Foreign
       (Collection a)
       (Collection a -> Canceler)
-      (Either Error InsertWriteResult -> Effect Unit)
+      (Either Error UpdateResult -> Effect Unit)
+      (Error -> Either Error Foreign)
+      (Foreign -> Either Error Foreign)
+      (Effect Canceler)
+
+foreign import _updateMany :: ∀ a.
+  Fn8 
+      Foreign
+      Foreign
+      Foreign
+      (Collection a)
+      (Collection a -> Canceler)
+      (Either Error UpdateResult -> Effect Unit)
       (Error -> Either Error Foreign)
       (Foreign -> Either Error Foreign)
       (Effect Canceler)

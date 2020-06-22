@@ -5,24 +5,25 @@ import Database.Mongo.ReadConcern (ReadConcern)
 import Database.Mongo.ReadPreference (ReadPreference)
 import Database.Mongo.Sort (Sort)
 import Database.Mongo.WriteConcern (WriteConcern)
+import Database.Mongo.ObjectId (ObjectId)
 
 type MongoError =
   { code :: Nullable Number
   , errmsg :: Nullable String
   }
 
-type InsertWriteResult =
-  { insertedCount :: Int
-  , result :: { ok :: Int, n :: Int }
+type InsertOneResult =
+  { success :: Boolean
+  , insertedId :: ObjectId
   }
 
-type BulkWriteResult =
-  { ok :: Int
-  , nInserted :: Int
-  , nUpdated :: Int
-  , nUpserted :: Int
-  , nModified :: Int
-  , nRemoved :: Int
+type InsertManyResult =
+  { success :: Boolean
+  , insertedCount :: Int
+  }
+
+type UpdateResult =
+  { success :: Boolean
   }
 
 type WriteError =

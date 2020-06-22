@@ -84,16 +84,43 @@ exports._find = function _find(selector, fields, collection, canceler, callback,
   return canceler(collection);
 };
 
-exports._insert = function _insert(type, json, options, collection, canceler, callback, left, right) {
-  collection["insert" + type](json, options, function(err, x) {
-    (err ? callback(left(err)) : callback(right(x.result)))();
+exports._insertOne = function _insertOne(json, options, collection, canceler, callback, left, right) {
+  collection.insertOne(json, options, function(err, x) {
+    (err ? 
+      callback(left(err)) : 
+      callback(right({ success: x.result.ok === 1, insertedId: x.result.insertedId } ))
+    )();
   });
   return canceler(collection);
 };
 
-exports._update = function(type, selector, json, options, collection, canceler, callback, left, right) {
-  collection["update" + type](selector, { $set: json }, options, function(err, x) {
-    (err ? callback(left(err)) : callback(right(x.result)))();
+exports._insertMany = function _insertMany(json, options, collection, canceler, callback, left, right) {
+  collection.insertMany(json, options, function(err, x) {
+    (err ? 
+      callback(left(err)) : 
+      callback(right({ success: x.result.ok === 1, insertedCount: x.result.insertedCount } ))
+    )();
+  });
+  return canceler(collection);
+};
+
+exports._updateOne = function(selector, json, options, collection, canceler, callback, left, right) {
+  collection.updateOne(selector, { $set: json }, options, function(err, x) {
+    (err ? 
+      callback(left(err)) : 
+      callback(right({ success: x.result.ok === 1 } ))
+    )();
+  });
+
+  return canceler(collection);
+};
+
+exports._updateMany = function(selector, json, options, collection, canceler, callback, left, right) {
+  collection.updateMany(selector, { $set: json }, options, function(err, x) {
+    (err ? 
+      callback(left(err)) : 
+      callback(right({ success: x.result.ok === 1 } ))
+    )();
   });
 
   return canceler(collection);
