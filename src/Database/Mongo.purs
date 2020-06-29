@@ -25,12 +25,13 @@ import Prelude
 import Control.Bind (bindFlipped)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
-import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn5, Fn6, Fn7, Fn8, runFn1, runFn2, runFn5, runFn6, runFn7, runFn8)
+import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn5, Fn6, Fn7, Fn8, Fn9, runFn1, runFn2, runFn5, runFn6, runFn7, runFn8, runFn9)
+import Data.Maybe (Maybe(..))
 import Data.Nullable (null)
+import Database.Mongo.ObjectId (ObjectId)
 import Database.Mongo.Options (InsertOptions, UpdateOptions)
 import Database.Mongo.Query (Query)
 import Database.Mongo.Types (AggregationOptions, CountOptions, InsertOneResult, InsertManyResult, UpdateResult, FindOptions)
-import Database.Mongo.ObjectId (ObjectId)
 import Effect (Effect)
 import Effect.Aff (Canceler, error, makeAff, nonCanceler)
 import Effect.Aff.Class (class MonadAff, liftAff)
@@ -74,11 +75,11 @@ find q opts col = liftAff $ makeAff find' >>= collect
     find' cb = runFn7 _find (write q) opts col noopCancel cb Left Right
 
 -- | Fetches the first document that matches the query
-findOne :: ∀ a m. MonadAff m => ReadForeign a => Query a -> FindOptions -> Collection a -> m a
+findOne :: ∀ a m. MonadAff m => ReadForeign a => Query a -> FindOptions -> Collection a -> m (Maybe a)
 findOne q opts col = liftAff $ makeAff findOne'
   where
     findOne' cb =
-      runFn7 _findOne (write q) opts col noopCancel (cb <<< bindFlipped parse) Left Right
+      runFn9 _findOne (write q) opts col noopCancel (cb <<< bindFlipped parse) Left Right (const Nothing) Just
     parse = lmap (error <<< show) <<< read
 
 -- | Inserts a single document into MongoDB
@@ -225,13 +226,15 @@ foreign import _collectOne ::
       (Effect Canceler)
 
 foreign import _findOne :: ∀ a.
-  Fn7 Foreign
+  Fn9 Foreign
       FindOptions
       (Collection a)
       (Collection a -> Canceler)
       (Either Error Foreign -> Effect Unit)
       (Error -> Either Error Foreign)
       (Foreign -> Either Error Foreign)
+      (Foreign -> Maybe Foreign)
+      (Foreign -> Maybe Foreign)
       (Effect Canceler)
 
 foreign import _find :: ∀ a.
