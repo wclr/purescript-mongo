@@ -70,12 +70,9 @@ exports._collectOne = function _collectOne(cursor, canceler,  callback, left, ri
   return canceler(cursor);
 };
 
-exports._findOne = function _findOne(selector, fields, collection, canceler, callback, left, right, nothing, just) {
+exports._findOne = function _findOne(selector, fields, collection, canceler, callback, left, right) {
   collection.findOne(selector, fields, function(err, x) {
-    (err ? 
-      callback(left(err)) : 
-      callback(right(x ? just(x) : nothing))
-    )();
+    (err ? callback(left(err)) : callback(right(x)))();
   });
   return canceler(collection);
 };

@@ -25,8 +25,8 @@ import Prelude
 import Control.Bind (bindFlipped)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
-import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn5, Fn6, Fn7, Fn8, Fn9, runFn1, runFn2, runFn5, runFn6, runFn7, runFn8, runFn9)
-import Data.Maybe (Maybe(..))
+import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn5, Fn6, Fn7, Fn8, runFn1, runFn2, runFn5, runFn6, runFn7, runFn8)
+import Data.Maybe (Maybe)
 import Data.Nullable (null)
 import Database.Mongo.ObjectId (ObjectId)
 import Database.Mongo.Options (InsertOptions, UpdateOptions)
@@ -79,7 +79,7 @@ findOne :: ∀ a m. MonadAff m => ReadForeign a => Query a -> FindOptions -> Col
 findOne q opts col = liftAff $ makeAff findOne'
   where
     findOne' cb =
-      runFn9 _findOne (write q) opts col noopCancel (cb <<< bindFlipped parse) Left Right (const Nothing) Just
+      runFn7 _findOne (write q) opts col noopCancel (cb <<< bindFlipped parse) Left Right
     parse = lmap (error <<< show) <<< read
 
 -- | Inserts a single document into MongoDB
@@ -226,15 +226,13 @@ foreign import _collectOne ::
       (Effect Canceler)
 
 foreign import _findOne :: ∀ a.
-  Fn9 Foreign
+  Fn7 Foreign
       FindOptions
       (Collection a)
       (Collection a -> Canceler)
       (Either Error Foreign -> Effect Unit)
       (Error -> Either Error Foreign)
       (Foreign -> Either Error Foreign)
-      (Foreign -> Maybe Foreign)
-      (Foreign -> Maybe Foreign)
       (Effect Canceler)
 
 foreign import _find :: ∀ a.
