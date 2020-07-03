@@ -88,7 +88,7 @@ exports._insertOne = function _insertOne(json, options, collection, canceler, ca
   collection.insertOne(json, options, function(err, x) {
     (err ? 
       callback(left(err)) : 
-      callback(right({ success: x.result.ok === 1, insertedId: x.result.insertedId } ))
+      callback(right({ success: x.result.ok === 1, insertedId: x.insertedId } ))
     )();
   });
   return canceler(collection);
@@ -98,7 +98,7 @@ exports._insertMany = function _insertMany(json, options, collection, canceler, 
   collection.insertMany(json, options, function(err, x) {
     (err ? 
       callback(left(err)) : 
-      callback(right({ success: x.result.ok === 1, insertedCount: x.result.insertedCount } ))
+      callback(right({ success: x.result.ok === 1, insertedCount: x.insertedCount } ))
     )();
   });
   return canceler(collection);
