@@ -128,10 +128,17 @@ class UnNest a b
 
 instance unnestCondition :: UnNest (Condition a) a
 
+instance unnestArrayCondition :: UnNest (Array (Condition a)) (Array a)
+
 instance recordUnNest ::
   ( RowToList row rl
   , UnNestFields rl out
   ) => UnNest (Record row) out
+
+instance recordArrayUnNest ::
+  ( RowToList row rl
+  , UnNestFields rl out
+  ) => UnNest (Array (Record row)) (Array out)
 
 class UnNestFields (rl :: RowList) row | rl -> row
 
