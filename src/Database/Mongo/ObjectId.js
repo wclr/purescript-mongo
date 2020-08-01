@@ -9,3 +9,7 @@ exports._eq = function (a) {
     return a === b;
   }
 }
+
+exports.fromString = function (s) {
+  return s;
+}

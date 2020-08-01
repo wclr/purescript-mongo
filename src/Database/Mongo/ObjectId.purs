@@ -21,3 +21,4 @@ instance eqObjectId :: Eq ObjectId where
 
 foreign import _show :: ObjectId -> String
 foreign import _eq :: ObjectId -> ObjectId -> Boolean
+foreign import fromString :: String -> ObjectId
