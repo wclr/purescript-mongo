@@ -1,5 +1,7 @@
 'use strict';
 
+const { ObjectId } = require("bson");
+
 exports._show = function (oid) {
   return oid;
 }
@@ -11,5 +13,5 @@ exports._eq = function (a) {
 }
 
 exports.fromString = function (s) {
-  return s;
+  return ObjectId(s);
 }
