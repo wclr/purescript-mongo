@@ -9,6 +9,7 @@ module Database.Mongo
   , close
   , collection
   , insertOne
+  , updateOne
   , find
   , findOne
   , countDocuments
@@ -18,6 +19,7 @@ module Database.Mongo
   , defaultAggregationOptions
   , module Database.Mongo.Types
   , module Database.Mongo.ObjectId
+  , module Database.Mongo.Options
   ) where
 
 import Prelude
@@ -29,7 +31,7 @@ import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn5, Fn6, Fn7, Fn8, runFn1, runFn
 import Data.Maybe (Maybe)
 import Data.Nullable (null)
 import Database.Mongo.ObjectId (ObjectId)
-import Database.Mongo.Options (InsertOptions, UpdateOptions)
+import Database.Mongo.Options (defaultInsertOptions, defaultUpdateOptions, InsertOptions, UpdateOptions)
 import Database.Mongo.Query (Query)
 import Database.Mongo.Types (AggregationOptions, CountOptions, InsertOneResult, InsertManyResult, UpdateResult, FindOptions)
 import Effect (Effect)
