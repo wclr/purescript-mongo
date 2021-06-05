@@ -5,6 +5,13 @@ You can edit this file as you like.
 { sources = [ "src/**/*.purs", "test/**/*.purs" ]
 , name = "mongo"
 , dependencies =
-  [ "effect", "aff", "simple-json", "psci-support", "node-process" ]
+  [ "aff"
+  , "argonaut-core"
+  , "effect"
+  , "node-process"
+  , "psci-support"
+  , "simple-json"
+  , "spec"
+  ]
 , packages = ./packages.dhall
 }

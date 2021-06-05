@@ -1,0 +1,5 @@
+{
+  "purescript.addNpmPath": true,
+  "purescript.buildCommand": "pnpx spago build --purs-args --json-errors",
+  "purescript.censorWarnings": []
+}
