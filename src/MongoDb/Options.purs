@@ -8,8 +8,8 @@ module MongoDb.Options
 
 import Data.Maybe (Maybe(..))
 import MongoDb.WriteConcern (WriteConcern)
-import Simple.JSON (class WriteForeign, write)
-
+-- import Simple.JSON (class EncodeJson, write)
+import Data.Argonaut.Encode (class EncodeJson, encodeJson)
 
 -- | Typed options for inserting documents into a collection
 newtype InsertOptions = InsertOptions
@@ -25,9 +25,9 @@ defaultInsertOptions = InsertOptions
   }
 
 
-instance encodeJsonInsertOptions :: WriteForeign InsertOptions where
-  writeImpl (InsertOptions {writeConcern, journaled}) =
-    write { w: writeConcern, j: journaled }
+instance encodeJsonInsertOptions :: EncodeJson InsertOptions where
+  encodeJson (InsertOptions {writeConcern, journaled}) =
+    encodeJson { w: writeConcern, j: journaled }
 
 
 -- | Typed options for updating documents into a collection
@@ -46,6 +46,6 @@ defaultUpdateOptions = UpdateOptions
   }
 
 
-instance encodeJsonUpdateOptions :: WriteForeign UpdateOptions where
-  writeImpl (UpdateOptions o) =
-    write { w: o.writeConcern, j: o.journaled, upsert: o.upsert }
+instance encodeJsonUpdateOptions :: EncodeJson UpdateOptions where
+  encodeJson (UpdateOptions o) =
+    encodeJson { w: o.writeConcern, j: o.journaled, upsert: o.upsert }

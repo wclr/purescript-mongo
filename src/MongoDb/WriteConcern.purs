@@ -1,6 +1,6 @@
 module MongoDb.WriteConcern where
 
-import Simple.JSON (class WriteForeign)
+import Data.Argonaut.Encode (class EncodeJson)
 import Unsafe.Coerce (unsafeCoerce)
 
 foreign import data WriteConcern :: Type
@@ -17,5 +17,5 @@ oneAck = nNodes 1
 majority :: WriteConcern
 majority = unsafeCoerce "majority"
 
-instance writeWriteConcern :: WriteForeign WriteConcern where
-  writeImpl = unsafeCoerce
+instance encodeWriteConcern :: EncodeJson WriteConcern where
+  encodeJson = unsafeCoerce

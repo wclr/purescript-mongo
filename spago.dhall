@@ -6,6 +6,7 @@ You can edit this file as you like.
 , name = "mongo"
 , dependencies =
   [ "aff"
+  , "argonaut-codecs"
   , "argonaut-core"
   , "effect"
   , "node-process"

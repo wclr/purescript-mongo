@@ -19,27 +19,30 @@ module MongoDb.Query
   , lte
   , gt
   , gte
-  , text
+  --, text
   , elemMatch
   ) where
 
 import Prelude
 
-import MongoDb.Types (TextQuery)
+import Data.Argonaut.Core (Json)
+import Data.Argonaut.Encode (class EncodeJson, encodeJson)
 import Foreign (Foreign)
+import MongoDb.Types (TextQuery)
+import Prim.Row as Row
+import Prim.RowList (class RowToList, Cons, Nil)
 import Record as Record
 import Record.Builder (Builder)
 import Record.Builder as Builder
-import Simple.JSON (class WriteForeign, write)
 import Type.Prelude (class IsSymbol, RLProxy(..), SProxy(..))
-import Prim.RowList (class RowToList, Cons, Nil)
-import Prim.Row as Row
+import Type.Proxy (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
 
 foreign import data Query :: Type -> Type
 foreign import data Condition :: Type -> Type
 
+write = encodeJson
 
 empty :: ∀ a. Query a
 empty = unsafeCoerce {}
@@ -57,52 +60,52 @@ not :: ∀ a. Query a -> Query a
 not q = unsafeCoerce $ write { "$not": write q }
 
 
-eq :: ∀ a. WriteForeign a => a -> Condition a
+eq :: ∀ a. EncodeJson a => a -> Condition a
 eq v = unsafeCoerce $ write { "$eq": v }
 
 
-ne :: ∀ a. WriteForeign a => a -> Condition a
+ne :: ∀ a. EncodeJson a => a -> Condition a
 ne v = unsafeCoerce $ write { "$ne": v }
 
 
-in' :: ∀ a. WriteForeign a => Array a -> Condition a
+in' :: ∀ a. EncodeJson a => Array a -> Condition a
 in' vs = unsafeCoerce $ write { "$in": write vs }
 
 
-nin :: ∀ a. WriteForeign a => Array a -> Condition a
+nin :: ∀ a. EncodeJson a => Array a -> Condition a
 nin vs = unsafeCoerce $ write { "$nin": write vs }
 
 
-lt :: ∀ a. WriteForeign a => a -> Condition a
+lt :: ∀ a. EncodeJson a => a -> Condition a
 lt v = unsafeCoerce $ write { "$lt": v }
 
 
-lte :: ∀ a. WriteForeign a => a -> Condition a
+lte :: ∀ a. EncodeJson a => a -> Condition a
 lte v = unsafeCoerce $ write { "$lte": v }
 
 
-gt :: ∀ a. WriteForeign a => a -> Condition a
+gt :: ∀ a. EncodeJson a => a -> Condition a
 gt v = unsafeCoerce $ write { "$gt": v }
 
 
-gte :: ∀ a. WriteForeign a => a -> Condition a
+gte :: ∀ a. EncodeJson a => a -> Condition a
 gte v = unsafeCoerce $ write { "$gte": v }
 
 
-text :: TextQuery -> Condition String
-text query = unsafeCoerce $ write { "$text": query }
+-- text :: TextQuery -> Condition String
+-- text query = unsafeCoerce $ write { "$text": query }
 
 
 elemMatch :: ∀ a. Query a -> Condition (Array a)
 elemMatch q = unsafeCoerce $ write { "$elemMatch": q }
 
 
-instance writeForeignCondition :: WriteForeign (Condition a) where
-  writeImpl = unsafeCoerce
+instance encodeJsonCondition :: EncodeJson (Condition a) where
+  encodeJson = unsafeCoerce
 
 
-instance writeForeignQuery :: WriteForeign (Query a) where
-  writeImpl = unsafeCoerce
+instance encodeJsonQuery :: EncodeJson (Query a) where
+  encodeJson = unsafeCoerce
 
 
 class IsQuery a from | a -> from where
@@ -129,17 +132,17 @@ instance consWriteQueryFields ::
   ( IsSymbol name
   , IsQueryRecord tail row orig from from'
   , UnNest ty ty'
-  , WriteForeign ty
+  , EncodeJson ty
   , Row.Cons name ty whatever row
   , Row.Cons name ty' orig' orig
   , Row.Lacks name from'
-  , Row.Cons name Foreign from' to
+  , Row.Cons name Json from' to
   ) => IsQueryRecord (Cons name ty tail) row orig from to where
   writeQueryRecord _ rec = result
     where
-      namep = SProxy :: SProxy name
+      namep = Proxy :: Proxy name
       value = Record.get namep rec
-      tailp = RLProxy :: RLProxy tail
+      tailp = Proxy :: Proxy tail
       rest = writeQueryRecord tailp rec
       result = Builder.insert namep (write value) <<< rest
 
