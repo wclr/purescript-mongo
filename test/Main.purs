@@ -3,30 +3,25 @@ module Test.Main where
 
 import Prelude
 
-import Control.Alt ((<|>))
 import Data.Argonaut.Core (Json)
 import Data.Argonaut.Decode (decodeJson)
 import Data.Argonaut.Encode (encodeJson)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
-import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
-import Effect.Aff (Aff, delay, launchAff_)
+import Effect.Aff (Aff, launchAff_)
 import Effect.Class (liftEffect)
 import Effect.Console (log)
-import Foreign as Foreign
 import MongoDb (ObjectId)
 import MongoDb as Mongo
 import MongoDb.ObjectId as ObjectId
 import MongoDb.Query (Query)
 import MongoDb.Query as Q
-import Simple.JSON (class WriteForeign, class ReadForeign, write)
-import Test.Spec (before, describe, it, pending)
+import Test.Spec (before, before_, describe, it)
 import Test.Spec.Assertions (shouldEqual)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpec)
 import Unsafe.Coerce (unsafeCoerce)
-
 
 
 -- data IntOrBoolean
@@ -43,7 +38,7 @@ import Unsafe.Coerce (unsafeCoerce)
 type Inner = { number :: Number, text :: String }
 
 
-type Item = { id :: Int, name :: String, inner :: Inner  }
+type Item = { id :: Int, name :: String, inner :: Inner }
 
 
 searchQuery :: Query Item
@@ -69,70 +64,58 @@ cleanUpCollection col =
 
 
 --
-connectTestDb :: Aff Unit
-connectTestDb = do
-  client <- Mongo.connect "mongodb://localhost/purs_mongodb_test"
-  let db = Mongo.db dbName client
-  col <- Mongo.collection "item" db
-  id <- liftEffect $ ObjectId.generate
-  _ <- liftEffect $ log $ "id:" <> show id
-  --item <- Mongo.find searchQuery defaultFindOptions col
-  _ <- Mongo.deleteMany Q.empty col
-  item <-
-    Mongo.insertOne
-      {"x": 1, _id: id } col
-  pure unit
+type XWithId =
+  { x :: Int, _id :: ObjectId }
+
 
 type X =
-  { x :: Int, _id :: ObjectId }
---
+  { x :: Int }
+
+
 main :: Effect Unit
-main = launchAff_ $ runSpec [consoleReporter] do
-  describe "MongoDb" do
-    before (Mongo.connect "mongodb://localhost/purs_mongodb_test") do
-      it "just works" \client -> do
-        let db = Mongo.defaultDb client
-        col <- Mongo.collection colName db
-        _ <- cleanUpCollection (col :: Mongo.Collection X)
-        id <- liftEffect $ ObjectId.generate
-        item <-
-          Mongo.insertOne
-            { x: 1, _id: id } col
-        itemOne <-
-          Mongo.findOne
-            (Q.by { _id: Q.eq id }) col
+main = launchAff_ $ do
+  client <- (Mongo.connect "mongodb://localhost/purs_mongodb_test")
+  let db = Mongo.defaultDb client
+  col <- Mongo.collection colName db
+  runSpec [ consoleReporter ] do
+    describe "MongoDb" do
+      before_ (cleanUpCollection (col :: Mongo.Collection XWithId))
+        do
+          it "insertOne/findOne" \_ -> do
+            id <- liftEffect $ ObjectId.generate
+            inserted <-
+              Mongo.insertOne
+                { x: 1, _id: id } col
+            itemOne <-
+              Mongo.findOne
+                (Q.by { _id: Q.eq id }) col
+            inserted `shouldEqual` ({ insertedId: id, success: true })
+            itemOne `shouldEqual` (Just { x: 1, _id: id })
 
-        itemOne `shouldEqual` (Just { x: 1, _id: id })
-      it "works" \client -> do
-        let db = Mongo.defaultDb client
-        col <- Mongo.collection colName db
-        _ <- cleanUpCollection (col :: Mongo.Collection Json)
-        id <- liftEffect $ ObjectId.generate
-        item <-
-          Mongo.insertOne
-           (encodeJson { x: 1, _id: id }) col
-        itemOne <-
-          Mongo.findOne
-            ((unsafeCoerce $ { _id: id }))
-            --encodeJson { _id: id }
-            col
-        --decoded <- pure $ decodeJson <$> itemOne
-        (decodeJson <$> itemOne) `shouldEqual` Just (Right { x: 1, _id: id })
+          it "insertMany/find" \_ -> do
+            let db = Mongo.defaultDb client
+            col <- Mongo.collection colName db
+            _ <- cleanUpCollection (col :: Mongo.Collection X)
 
--- main :: Effect Unit
--- main = launchAff_ $ runSpec [consoleReporter] do
---   describe "purescript-spec" do
---     describe "Attributes" do
---       it "awesome" do
---         _ <- connectTestDb
---         let isAwesome = true
---         isAwesome `shouldEqual` true
---       pending "feature complete"
---     describe "Features" do
---       it "runs in NodeJS" $ pure unit
---       it "runs in the browser" $ pure unit
---       it "supports streaming reporters" $ pure unit
---       it "supports async specs" do
---         res <- delay (Milliseconds 100.0) *> pure "Alligator"
---         res `shouldEqual` "Alligator"
---       it "is PureScript 0.12.x compatible" $ pure unit
+            inserted <-
+              Mongo.insertMany
+                [ { x: 1 }, { x: 2 } ] col
+            foundItems <-
+              Mongo.find
+                (Q.empty) col
+            inserted `shouldEqual` ({ insertedCount: 2, success: true })
+            foundItems `shouldEqual` ([ { x: 1 }, { x: 2 } ])
+          it "deleteMany" \_ -> do
+            (col' :: Mongo.Collection Json) <- Mongo.collection colName db
+            --_ <- cleanUpCollection (col' :: Mongo.Collection Json)
+            id <- liftEffect $ ObjectId.generate
+            item <-
+              Mongo.insertOne
+                (encodeJson { x: 1, _id: id }) col'
+            itemOne <-
+              Mongo.findOne
+                ((unsafeCoerce $ { _id: id }))
+                --encodeJson { _id: id }
+                col'
+            --decoded <- pure $ decodeJson <$> itemOne
+            (decodeJson <$> itemOne) `shouldEqual` Just (Right { x: 1, _id: id })

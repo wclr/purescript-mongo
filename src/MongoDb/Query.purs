@@ -23,18 +23,17 @@ module MongoDb.Query
   , elemMatch
   ) where
 
+
 import Prelude
 
 import Data.Argonaut.Core (Json)
 import Data.Argonaut.Encode (class EncodeJson, encodeJson)
-import Foreign (Foreign)
-import MongoDb.Types (TextQuery)
 import Prim.Row as Row
 import Prim.RowList (class RowToList, Cons, Nil)
 import Record as Record
 import Record.Builder (Builder)
 import Record.Builder as Builder
-import Type.Prelude (class IsSymbol, RLProxy(..), SProxy(..))
+import Type.Prelude (class IsSymbol)
 import Type.Proxy (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -42,7 +41,10 @@ import Unsafe.Coerce (unsafeCoerce)
 foreign import data Query :: Type -> Type
 foreign import data Condition :: Type -> Type
 
+
+write :: ∀ a. EncodeJson a => a -> Json
 write = encodeJson
+
 
 empty :: ∀ a. Query a
 empty = unsafeCoerce {}
@@ -100,11 +102,11 @@ elemMatch :: ∀ a. Query a -> Condition (Array a)
 elemMatch q = unsafeCoerce $ write { "$elemMatch": q }
 
 
-instance encodeJsonCondition :: EncodeJson (Condition a) where
+instance EncodeJson (Condition a) where
   encodeJson = unsafeCoerce
 
 
-instance encodeJsonQuery :: EncodeJson (Query a) where
+instance EncodeJson (Query a) where
   encodeJson = unsafeCoerce
 
 
@@ -118,12 +120,12 @@ instance recordWriteQuery ::
   ) => IsQuery (Record row) (Record orig) where
   by rec = unsafeCoerce $ Builder.build steps {}
     where
-      rlp = RLProxy :: RLProxy rl
+      rlp = Proxy :: Proxy rl
       steps = writeQueryRecord rlp rec
 
 
 class IsQueryRecord :: forall k. k -> Row Type -> Row Type -> Row Type -> Row Type -> Constraint
-class IsQueryRecord rl row (orig :: # Type) (from :: # Type) (to :: # Type)
+class IsQueryRecord rl row (orig :: Row Type) (from :: Row Type) (to :: Row Type)
   | rl -> row from to orig where
   writeQueryRecord :: forall g. g rl -> Record row -> Builder (Record from) (Record to)
 
@@ -147,8 +149,7 @@ instance consWriteQueryFields ::
       result = Builder.insert namep (write value) <<< rest
 
 
-instance nilWriteQueryFields ::
-  IsQueryRecord Nil row orig () () where
+instance IsQueryRecord Nil row orig () () where
   writeQueryRecord _ _ = identity
 
 
@@ -156,19 +157,17 @@ class UnNest :: ∀ k1 k2. k1 -> k2 -> Constraint
 class UnNest a b
 
 
-instance unnestCondition :: UnNest (Condition a) a
+instance UnNest (Condition a) a
 
 
-instance unnestArrayCondition :: UnNest (Array (Condition a)) (Array a)
+instance UnNest (Array (Condition a)) (Array a)
 
 
-instance recordUnNest ::
+instance
   ( RowToList row rl
   , UnNestFields rl out
   ) => UnNest (Record row) out
-
-
-instance recordArrayUnNest ::
+instance
   ( RowToList row rl
   , UnNestFields rl out
   ) => UnNest (Array (Record row)) (Array out)

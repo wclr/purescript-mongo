@@ -1,28 +1,19 @@
-"use strict";
+import { ObjectId } from "bson";
 
-/**
- * @param {import("bson").ObjectId} id
- */
-exports.equals = (id) => {
+export const equals = (id) => {
   return (id2) => {
     return id.equals(id2);
   };
 };
 
-/**
- * @param {import("bson").ObjectId} id
- */
-exports.toHexString = (id) => {
+export const toHexString = (id) => {
   return id.toHexString();
 };
 
-exports.generate = () => {
-  const { ObjectId } = require("bson");
-
+export const generate = () => {
   return new ObjectId();
 };
 
-exports.fromString = function (s) {
-  const { ObjectId } = require("bson");
+export const fromString = function (s) {
   return new ObjectId(s);
 };

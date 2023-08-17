@@ -8,13 +8,20 @@ module MongoDb
   , db
   , close
   , collection
-  , find, findWithOptions
-  , findOne, findOneWithOptions
-  , insertOne, insertOneWithOptions
-  , updateOne, updateOneWithOptions
-  , updateMany, updateManyWithOptions
-  , insertMany, insertManyWithOptions
-  , deleteOne, deleteMany
+  , find
+  , findWithOptions
+  , findOne
+  , findOneWithOptions
+  , insertOne
+  , insertOneWithOptions
+  , updateOne
+  , updateOneWithOptions
+  , updateMany
+  , updateManyWithOptions
+  , insertMany
+  , insertManyWithOptions
+  , deleteOne
+  , deleteMany
   , deleteManyWithOptions
   , countDocuments
   , aggregate
@@ -29,7 +36,7 @@ import Prelude
 
 import Control.Bind (bindFlipped)
 import Data.Argonaut.Core (Json)
-import Data.Argonaut.Decode (class DecodeJson, decodeJson)
+import Data.Argonaut.Decode (class DecodeJson, JsonDecodeError, decodeJson)
 import Data.Argonaut.Encode (class EncodeJson, encodeJson)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
@@ -42,9 +49,10 @@ import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Exception (Error)
 import MongoDb.ObjectId (ObjectId)
 import MongoDb.ObjectId (ObjectId) as Reexport
+import MongoDb.Options (InsertOptions(..), UpdateOptions(..), defaultInsertOptions, defaultUpdateOptions) as Reexport
 import MongoDb.Options (InsertOptions, UpdateOptions, defaultInsertOptions, defaultUpdateOptions)
 import MongoDb.Query (Query)
-import MongoDb.Types (AggregationOptions, CountOptions, FindOptions, InsertManyResult, InsertOneResult, RemoveOptions, UpdateResult, DeleteResult)
+import MongoDb.Types (AggregationOptions, CountOptions, DeleteResult, FindOptions, InsertManyResult, InsertOneResult, RemoveOptions, UpdateResult)
 
 
 foreign import data Client :: Type
@@ -53,15 +61,17 @@ foreign import data Collection :: Type -> Type
 foreign import data Cursor :: Type
 
 
+write :: ∀ a. EncodeJson a => a -> Json
 write = encodeJson
 
 
+read :: ∀ a. DecodeJson a => Json -> Either JsonDecodeError a
 read = decodeJson
 
 
 -- | Connect to MongoDB using a url as documented at
 -- | docs.mongodb.org/manual/reference/connection-string/
-connect :: ∀ m . MonadAff m => String -> m Client
+connect :: ∀ m. MonadAff m => String -> m Client
 connect str = liftAff $ makeAff \cb ->
   runFn5 _connect str noopCancel cb Left Right
 
@@ -77,7 +87,7 @@ db = runFn2 __db
 
 
 -- | Close the connection to the database
-close :: ∀ m . MonadAff m => Client -> m Unit
+close :: ∀ m. MonadAff m => Client -> m Unit
 close cli = liftAff $ makeAff \cb ->
   runFn5 _close cli noopCancel cb Left Right
 
@@ -107,7 +117,7 @@ findWithOptions :: ∀ a m.
   m (Array a)
 findWithOptions q opts col = liftAff $ makeAff find' >>= collect
   where
-    find' cb = runFn7 _find (write q) opts col noopCancel cb Left Right
+  find' cb = runFn7 _find (write q) opts col noopCancel cb Left Right
 
 
 -- | Fetches the first document that matches the query
@@ -129,12 +139,11 @@ findOneWithOptions :: ∀ a m.
   FindOptions ->
   Collection a ->
   m (Maybe a)
-
 findOneWithOptions q opts col = liftAff $ makeAff findOne'
   where
-    findOne' cb =
-      runFn7 _findOne (write q) opts col noopCancel (cb <<< bindFlipped parse) Left Right
-    parse = lmap (error <<< show) <<< read
+  findOne' cb =
+    runFn7 _findOne (write q) opts col noopCancel (cb <<< bindFlipped parse) Left Right
+  parse = lmap (error <<< show) <<< read
 
 
 -- | Inserts a single document into MongoDB
@@ -161,7 +170,6 @@ insertOneWithOptions doc options c =
     runFn7 _insertOne (write doc) (write options) c noopCancel cb Left Right
 
 
-
 -- | Inserts an array of documents into MongoDB
 insertMany :: ∀ a m.
   EncodeJson a =>
@@ -186,25 +194,20 @@ insertManyWithOptions items opts col = liftAff $ makeAff \cb ->
 
 
 -- | Update a single document in a collection
-updateOne :: ∀ a m
-   . EncodeJson a => MonadAff m
-  => Query a
-  -> a
-  -> Collection a
-  -> m UpdateResult
+updateOne :: ∀ a m. EncodeJson a => MonadAff m => Query a -> a -> Collection a -> m UpdateResult
 updateOne q u c =
-  updateOneWithOptions q u defaultUpdateOptions c
+  updateOneWithOptions defaultUpdateOptions q u c
 
 
 -- | Update a single document in a collection
-updateOneWithOptions :: ∀ a m
-   . EncodeJson a => MonadAff m
-  => Query a
-  -> a
-  -> UpdateOptions
-  -> Collection a
-  -> m UpdateResult
-updateOneWithOptions q u o c = liftAff $ makeAff \cb ->
+updateOneWithOptions :: ∀ a m.
+  EncodeJson a => MonadAff m =>
+  UpdateOptions ->
+  Query a ->
+  a ->
+  Collection a ->
+  m UpdateResult
+updateOneWithOptions o q u c = liftAff $ makeAff \cb ->
   runFn8 _updateOne (write q) (write u) (write o) c noopCancel cb Left Right
 
 
@@ -266,8 +269,15 @@ deleteManyWithOptions query opts col = liftAff $ makeAff
 
 
 -- | Gets the number of documents matching the filter
-countDocuments :: ∀ a m. MonadAff m => Query a -> CountOptions -> Collection a -> m Int
-countDocuments q o col = liftAff $ makeAff \cb ->
+countDocuments :: ∀ a m. MonadAff m =>
+  Query a -> Collection a -> m Int
+countDocuments q col =
+  countDocumentsWithOptions q defaultCountOptions col
+
+
+countDocumentsWithOptions :: ∀ a m. MonadAff m =>
+  Query a -> CountOptions -> Collection a -> m Int
+countDocumentsWithOptions q o col = liftAff $ makeAff \cb ->
   runFn7 _countDocuments (write q) o col noopCancel cb Left Right
 
 
@@ -281,7 +291,7 @@ aggregate :: ∀ a m.
   m (Array a)
 aggregate p o col = liftAff $ makeAff aggregate' >>= collect
   where
-    aggregate' cb = runFn7 _aggregate p o col noopCancel cb Left Right
+  aggregate' cb = runFn7 _aggregate p o col noopCancel cb Left Right
 
 
 defaultFindOptions :: FindOptions
@@ -299,6 +309,7 @@ defaultCountOptions =
   { limit: null, maxTimeMS: null, skip: null, hint: null }
 
 
+{-
 defaultAggregationOptions :: AggregationOptions
 defaultAggregationOptions =
   { explain: null
@@ -309,6 +320,8 @@ defaultAggregationOptions =
   , hint: null
   }
 
+ -}
+
 
 collect :: ∀ a m.
   DecodeJson a => MonadAff m =>
@@ -317,7 +330,7 @@ collect :: ∀ a m.
 collect cur = liftAff $ makeAff \cb ->
   runFn5 _collect cur noopCancel (cb <<< bindFlipped parse) Left Right
   where
-    parse = lmap (error <<< show) <<< read
+  parse = lmap (error <<< show) <<< read
 
 
 -- | Do nothing on cancel.
@@ -325,17 +338,16 @@ noopCancel :: forall a. a -> Canceler
 noopCancel _ = nonCanceler
 
 
-
 -- FOREIGN
 
 
 foreign import _connect ::
   Fn5 String
-      (Client -> Canceler)
-      (Either Error Client -> Effect Unit)
-      (Error -> Either Error Client)
-      (Client -> Either Error Client)
-      (Effect Canceler)
+    (Client -> Canceler)
+    (Either Error Client -> Effect Unit)
+    (Error -> Either Error Client)
+    (Client -> Either Error Client)
+    (Effect Canceler)
 
 
 foreign import _defaultDb :: Fn1 Client Database
@@ -345,159 +357,159 @@ foreign import __db :: Fn2 String Client Database
 
 foreign import _handleParseFailure ::
   Fn3 Error
-      (Client -> Canceler)
-      (Error -> Effect Unit)
-      (Effect Canceler)
+    (Client -> Canceler)
+    (Error -> Effect Unit)
+    (Effect Canceler)
 
 
 foreign import _close ::
   Fn5 Client
-      (Unit -> Canceler)
-      (Either Error Unit -> Effect Unit)
-      (Error -> Either Error Unit)
-      (Unit -> Either Error Unit)
-      (Effect Canceler)
+    (Unit -> Canceler)
+    (Either Error Unit -> Effect Unit)
+    (Error -> Either Error Unit)
+    (Unit -> Either Error Unit)
+    (Effect Canceler)
 
 
 foreign import _collection :: ∀ a.
   Fn6 String
-      Database
-      (Database -> Canceler)
-      (Either Error (Collection a) -> Effect Unit)
-      (Error -> Either Error (Collection a))
-      (Collection a -> Either Error (Collection a))
-      (Effect Canceler)
+    Database
+    (Database -> Canceler)
+    (Either Error (Collection a) -> Effect Unit)
+    (Error -> Either Error (Collection a))
+    (Collection a -> Either Error (Collection a))
+    (Effect Canceler)
 
 
 foreign import _collect ::
   Fn5 Cursor
-      (Cursor -> Canceler)
-      (Either Error Json -> Effect Unit)
-      (Error -> Either Error Json)
-      (Json -> Either Error Json)
-      (Effect Canceler)
+    (Cursor -> Canceler)
+    (Either Error Json -> Effect Unit)
+    (Error -> Either Error Json)
+    (Json -> Either Error Json)
+    (Effect Canceler)
 
 
 foreign import _collectOne ::
   Fn5 Cursor
-      (Cursor -> Canceler)
-      (Either Error Json -> Effect Unit)
-      (Error -> Either Error Json)
-      (Json -> Either Error Json)
-      (Effect Canceler)
+    (Cursor -> Canceler)
+    (Either Error Json -> Effect Unit)
+    (Error -> Either Error Json)
+    (Json -> Either Error Json)
+    (Effect Canceler)
 
 
 foreign import _findOne :: ∀ a.
   Fn7 Json
-      FindOptions
-      (Collection a)
-      (Collection a -> Canceler)
-      (Either Error Json -> Effect Unit)
-      (Error -> Either Error Json)
-      (Json -> Either Error Json)
-      (Effect Canceler)
+    FindOptions
+    (Collection a)
+    (Collection a -> Canceler)
+    (Either Error Json -> Effect Unit)
+    (Error -> Either Error Json)
+    (Json -> Either Error Json)
+    (Effect Canceler)
 
 
 foreign import _find :: ∀ a.
   Fn7 Json
-      FindOptions
-      (Collection a)
-      (Collection a -> Canceler)
-      (Either Error Cursor -> Effect Unit)
-      (Error -> Either Error Cursor)
-      (Cursor -> Either Error Cursor)
-      (Effect Canceler)
+    FindOptions
+    (Collection a)
+    (Collection a -> Canceler)
+    (Either Error Cursor -> Effect Unit)
+    (Error -> Either Error Cursor)
+    (Cursor -> Either Error Cursor)
+    (Effect Canceler)
 
 
 foreign import _insertOne :: ∀ a.
   Fn7
-      Json
-      Json
-      (Collection a)
-      (Collection a -> Canceler)
-      (Either Error InsertOneResult -> Effect Unit)
-      (Error -> Either Error Json)
-      (Json -> Either Error Json)
-      (Effect Canceler)
+    Json
+    Json
+    (Collection a)
+    (Collection a -> Canceler)
+    (Either Error InsertOneResult -> Effect Unit)
+    (Error -> Either Error Json)
+    (Json -> Either Error Json)
+    (Effect Canceler)
 
 
 foreign import _insertMany :: ∀ a.
   Fn7
-      Json
-      Json
-      (Collection a)
-      (Collection a -> Canceler)
-      (Either Error InsertManyResult -> Effect Unit)
-      (Error -> Either Error Json)
-      (Json -> Either Error Json)
-      (Effect Canceler)
+    Json
+    Json
+    (Collection a)
+    (Collection a -> Canceler)
+    (Either Error InsertManyResult -> Effect Unit)
+    (Error -> Either Error Json)
+    (Json -> Either Error Json)
+    (Effect Canceler)
 
 
 foreign import _updateOne :: ∀ a.
   Fn8
-      Json
-      Json
-      Json
-      (Collection a)
-      (Collection a -> Canceler)
-      (Either Error UpdateResult -> Effect Unit)
-      (Error -> Either Error Json)
-      (Json -> Either Error Json)
-      (Effect Canceler)
+    Json
+    Json
+    Json
+    (Collection a)
+    (Collection a -> Canceler)
+    (Either Error UpdateResult -> Effect Unit)
+    (Error -> Either Error Json)
+    (Json -> Either Error Json)
+    (Effect Canceler)
 
 
 foreign import _updateMany :: ∀ a.
   Fn8
-      Json
-      Json
-      Json
-      (Collection a)
-      (Collection a -> Canceler)
-      (Either Error UpdateResult -> Effect Unit)
-      (Error -> Either Error Json)
-      (Json -> Either Error Json)
-      (Effect Canceler)
+    Json
+    Json
+    Json
+    (Collection a)
+    (Collection a -> Canceler)
+    (Either Error UpdateResult -> Effect Unit)
+    (Error -> Either Error Json)
+    (Json -> Either Error Json)
+    (Effect Canceler)
 
 
 foreign import _deleteOne :: ∀ a.
   Fn7 Json
-      InsertOptions
-      (Collection a)
-      (Collection a -> Canceler)
-      (Either Error DeleteResult -> Effect Unit)
-      (Error -> Either Error Json)
-      (Json -> Either Error Json)
-      (Effect Canceler)
+    InsertOptions
+    (Collection a)
+    (Collection a -> Canceler)
+    (Either Error DeleteResult -> Effect Unit)
+    (Error -> Either Error Json)
+    (Json -> Either Error Json)
+    (Effect Canceler)
 
 
 foreign import _deleteMany :: ∀ a.
   Fn7 Json
-      InsertOptions
-      (Collection a)
-      (Collection a -> Canceler)
-      (Either Error DeleteResult -> Effect Unit)
-      (Error -> Either Error Json)
-      (Json -> Either Error Json)
-      (Effect Canceler)
+    InsertOptions
+    (Collection a)
+    (Collection a -> Canceler)
+    (Either Error DeleteResult -> Effect Unit)
+    (Error -> Either Error Json)
+    (Json -> Either Error Json)
+    (Effect Canceler)
 
 
 foreign import _countDocuments :: ∀ a.
   Fn7 Json
-      (CountOptions)
-      (Collection a)
-      (Collection a -> Canceler)
-      (Either Error Int -> Effect Unit)
-      (Error -> Either Error Int)
-      (Int -> Either Error Int)
-      (Effect Canceler)
+    (CountOptions)
+    (Collection a)
+    (Collection a -> Canceler)
+    (Either Error Int -> Effect Unit)
+    (Error -> Either Error Int)
+    (Int -> Either Error Int)
+    (Effect Canceler)
 
 
 foreign import _aggregate :: ∀ a.
   Fn7 (Array Json)
-      (AggregationOptions)
-      (Collection a)
-      (Collection a -> Canceler)
-      (Either Error Cursor -> Effect Unit)
-      (Error -> Either Error Cursor)
-      (Cursor -> Either Error Cursor)
-      (Effect Canceler)
+    (AggregationOptions)
+    (Collection a)
+    (Collection a -> Canceler)
+    (Either Error Cursor -> Effect Unit)
+    (Error -> Either Error Cursor)
+    (Cursor -> Either Error Cursor)
+    (Effect Canceler)

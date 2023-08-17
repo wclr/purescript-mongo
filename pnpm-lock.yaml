@@ -1,9 +1,8 @@
-dependencies:
-  bson: 4.4.0
 devDependencies:
   '@types/mongodb': 3.6.17
+  bson: 4.4.0
   mongodb: 3.6.9
-  purescript: 0.14.1
+  purescript: 0.14.2
   purty: 7.0.0
   spago: 0.20.3
   typescript: 4.3.2
@@ -92,7 +91,7 @@ packages:
     resolution:
       integrity: sha1-ibTRmasr7kneFk6gK4nORi1xt2c=
   /base64-js/1.5.1:
-    dev: false
+    dev: true
     resolution:
       integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==
   /bcrypt-pbkdf/1.0.2:
@@ -128,7 +127,7 @@ packages:
   /bson/4.4.0:
     dependencies:
       buffer: 5.7.1
-    dev: false
+    dev: true
     engines:
       node: '>=6.9.0'
     resolution:
@@ -141,7 +140,7 @@ packages:
     dependencies:
       base64-js: 1.5.1
       ieee754: 1.2.1
-    dev: false
+    dev: true
     resolution:
       integrity: sha512-EHcyIPBQ4BSGlvjB16k5KgAJ27CIsHY/2JBmCRReo48y9rQ3MaUzWX3KVlBa4U7MyX02HdVj0K7C3WaB3ju7FQ==
   /byline/5.0.0:
@@ -469,7 +468,7 @@ packages:
     resolution:
       integrity: sha1-muzZJRFHcvPZW2WmCruPfBj7rOE=
   /ieee754/1.2.1:
-    dev: false
+    dev: true
     resolution:
       integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==
   /iferr/0.1.5:
@@ -847,14 +846,14 @@ packages:
     hasBin: true
     resolution:
       integrity: sha512-fQAWWP5a7scuchXecjpU4r4KEgSPuS6bBnaP01k9f71qqD28HaJ2m4PXHFkhkR4oATAxTPIGCtmTwtVoiBOHog==
-  /purescript/0.14.1:
+  /purescript/0.14.2:
     dependencies:
       purescript-installer: 0.2.5
     dev: true
     hasBin: true
     requiresBuild: true
     resolution:
-      integrity: sha512-dh87XeDP/JGe/3DKBMglkRuIRfGLGkL8beuLIl9KemzckgyuD+j7VK15eVb9n5Exp3DIr6SNEuGG4FjuQQ7Rpg==
+      integrity: sha512-kEXY5yUaG8a1FNN/IdtfNl4gcql7p76CPqnanMZ37GdtBZTcFK/SB24bp2rOAT1/N9qU8/corlra6uNf4+5pgQ==
   /purty/7.0.0:
     dev: true
     hasBin: true
@@ -1200,7 +1199,7 @@ specifiers:
   '@types/mongodb': ^3.6.17
   bson: ^4.4.0
   mongodb: ^3.6.5
-  purescript: ^0.14.1
+  purescript: ^0.14.2
   purty: ^7.0.0
   spago: ^0.20.3
   typescript: ^4.3.2

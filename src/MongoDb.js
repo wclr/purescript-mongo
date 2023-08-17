@@ -1,7 +1,10 @@
 "use strict";
 
-exports._connect = function _connect(uri, canceler, callback, left, right) {
-  var client = require("mongodb").MongoClient;
+//import { MongoClient as client } from "mongodb";
+import mongodb from "mongodb";
+const client = mongodb.MongoClient
+
+export const _connect = function _connect(uri, canceler, callback, left, right) {
   client.connect(
     uri,
     { useNewUrlParser: true, useUnifiedTopology: true },
@@ -17,44 +20,39 @@ exports._connect = function _connect(uri, canceler, callback, left, right) {
   return canceler(client);
 };
 
-exports._defaultDb = function _defaultDb(client) {
+export const _defaultDb = function _defaultDb(client) {
   return client.db();
 };
 
-exports._db = function _defaultDb(dbName, options, client) {
+export const _db = function _defaultDb(dbName, options, client) {
   return client.db(dbName, options);
 };
 
-exports.__db = function _defaultDb(dbName, client) {
+export const __db = function _defaultDb(dbName, client) {
   return client.db(dbName);
 };
 
-exports._handleParseFailure = function _handleParseFailure(
+export const _handleParseFailure = function _handleParseFailure(
   err,
   canceler,
   errback
 ) {
   process.nextTick(function () {
     errback(err)();
-  });
-  var client = require("mongodb").MongoClient;
+  });  
   return canceler(client);
 };
 
-/**
- * @param {import("mongodb").MongoClient} client
- */
-exports._close = function _close(client, canceler, callback, left, right) {
+
+export const _close = function _close(client, canceler, callback, left, right) {
   client.close(function (err, x) {
     (err ? callback(left(err)) : callback(right(x)))();
   });
   return canceler({});
 };
 
-/**
- * @param {import("mongodb").Db} db
- */
-exports._collection = function _collection(
+
+export const _collection = function _collection(
   name,
   db,
   canceler,
@@ -68,14 +66,14 @@ exports._collection = function _collection(
   return canceler(db);
 };
 
-exports._collect = function _collect(cursor, canceler, callback, left, right) {
+export const _collect = function _collect(cursor, canceler, callback, left, right) {
   cursor.toArray(function (err, x) {
     (err ? callback(left(err)) : callback(right(x)))();
   });
   return canceler(cursor);
 };
 
-exports._collectOne = function _collectOne(
+export const _collectOne = function _collectOne(
   cursor,
   canceler,
   callback,
@@ -96,7 +94,7 @@ exports._collectOne = function _collectOne(
   return canceler(cursor);
 };
 
-exports._findOne = function _findOne(
+export const _findOne = function _findOne(
   selector,
   fields,
   collection,
@@ -114,7 +112,7 @@ exports._findOne = function _findOne(
 /**
  * @param {import("mongodb").Collection} collection
  */
-exports._find = function _find(
+export const _find = function _find(
   selector,
   fields,
   collection,
@@ -123,16 +121,21 @@ exports._find = function _find(
   left,
   right
 ) {
-  collection.find(selector, fields, function (err, x) {
-    (err ? callback(left(err)) : callback(right(x)))();
-  });
+  try {
+    callback(right(collection.find(selector, fields)))();
+  } catch (err) {
+    callback(left(err))();
+  }
+  // collection.find(selector, fields, function (err, x) {
+  //   (err ? callback(left(err)) : callback(right(x)))();
+  // });
   return canceler(collection);
 };
 
 /**
  * @param {import("mongodb").Collection} collection
  */
-exports._insertOne = function _insertOne(
+export const _insertOne = function _insertOne(
   json,
   options,
   collection,
@@ -151,7 +154,7 @@ exports._insertOne = function _insertOne(
   return canceler(collection);
 };
 
-exports._insertMany = function _insertMany(
+export const _insertMany = function _insertMany(
   json,
   options,
   collection,
@@ -170,7 +173,7 @@ exports._insertMany = function _insertMany(
   return canceler(collection);
 };
 
-exports._updateOne = function (
+export const _updateOne = function (
   selector,
   json,
   options,
@@ -192,7 +195,7 @@ exports._updateOne = function (
 /**
  * @param {import("mongodb").Collection} collection
  */
-exports._updateMany = function (
+export const _updateMany = function (
   selector,
   json,
   options,
@@ -211,10 +214,12 @@ exports._updateMany = function (
   return canceler(collection);
 };
 
+// note that can not use arrow (=>) functions here
+// because of: https://github.com/purescript/purescript/issues/4124
 /**
  * @param {import("mongodb").Collection} collection
  */
-exports._deleteOne = (
+export const _deleteOne = function (
   filter,
   options,
   collection,
@@ -222,7 +227,7 @@ exports._deleteOne = (
   callback,
   left,
   right
-) => {
+) {
   collection.deleteOne(filter, options, function (err, x) {
     (err
       ? callback(left(err))
@@ -234,7 +239,7 @@ exports._deleteOne = (
 /**
  * @param {import("mongodb").Collection} collection
  */
-exports._deleteMany = (
+export const _deleteMany = function (
   filter,
   options,
   collection,
@@ -242,7 +247,7 @@ exports._deleteMany = (
   callback,
   left,
   right
-) => {
+) {
   collection.deleteMany(filter, options, function (err, x) {
     (err
       ? callback(left(err))
@@ -251,7 +256,7 @@ exports._deleteMany = (
   return canceler(collection);
 };
 
-exports._countDocuments = function (
+export const _countDocuments = function (
   selector,
   options,
   collection,
@@ -260,14 +265,14 @@ exports._countDocuments = function (
   left,
   right
 ) {
-  collection["countDocuments"](selector, options, function (err, x) {
-    (err ? callback(left(err)) : callback(right(x.result)))();
+  collection.countDocuments(selector, options, function (err, x) {
+    (err ? callback(left(err)) : callback(right(x)))();
   });
 
   return canceler(collection);
 };
 
-exports._aggregate = function (
+export const _aggregate = function (
   pipeline,
   options,
   collection,

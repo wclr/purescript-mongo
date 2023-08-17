@@ -1,5 +1,13 @@
 {
-  "purescript.addNpmPath": true,
-  "purescript.buildCommand": "pnpx spago build --purs-args --json-errors",
+  // "purescript.addNpmPath": true,
+  // "purescript.buildCommand": "pnpx spago build --purs-args --json-errors",
+
+  "purescript.addNpmPath": false,
+  "purescript.topLevelFormat.formatter": "tidy",
+  "purescript.fastRebuild": false,
+  "purescript.buildOpenedFiles": true,
+  "purescript.fullBuildOnSave": true,
+  "purescript.diagnosticsOnType": true,  
+  
   "purescript.censorWarnings": []
 }
