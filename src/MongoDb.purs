@@ -8,6 +8,9 @@ module MongoDb
   , db
   , close
   , collection
+  , dropCollection
+  , createIndexes
+
   , find
   , findWithOptions
   , findOne
@@ -16,8 +19,12 @@ module MongoDb
   , insertOneWithOptions
   , updateOne
   , updateOneWithOptions
+  , replaceOne
+  , replaceOneWithOptions
+
   , updateMany
   , updateManyWithOptions
+
   , insertMany
   , insertManyWithOptions
   , deleteOne
@@ -47,18 +54,26 @@ import Effect (Effect)
 import Effect.Aff (Canceler, error, makeAff, nonCanceler)
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Exception (Error)
+import Foreign.Object (Object)
 import MongoDb.ObjectId (ObjectId)
 import MongoDb.ObjectId (ObjectId) as Reexport
 import MongoDb.Options (InsertOptions(..), UpdateOptions(..), defaultInsertOptions, defaultUpdateOptions) as Reexport
-import MongoDb.Options (InsertOptions, UpdateOptions, defaultInsertOptions, defaultUpdateOptions)
+import MongoDb.Options (InsertOptions, ReplaceOneOptions(..), UpdateOptions, defaultInsertOptions, defaultReplaceOneOptions, defaultUpdateOptions)
 import MongoDb.Query (Query)
-import MongoDb.Types (AggregationOptions, CountOptions, DeleteResult, FindOptions, InsertManyResult, InsertOneResult, RemoveOptions, UpdateResult)
+import MongoDb.Types (AggregationOptions, CountOptions, DeleteResult, FindOptions, InsertManyResult, InsertOneResult, RemoveOptions, ReplaceOneResult, UpdateResult)
 
 
 foreign import data Client :: Type
 foreign import data Database :: Type
 foreign import data Collection :: Type -> Type
 foreign import data Cursor :: Type
+
+
+type IndexSpecification =
+  { unique :: Boolean
+  , name :: String
+  , key :: Object Int
+  }
 
 
 write :: ∀ a. EncodeJson a => a -> Json
@@ -96,6 +111,23 @@ close cli = liftAff $ makeAff \cb ->
 collection :: ∀ a m. MonadAff m => String -> Database -> m (Collection a)
 collection name d = liftAff $ makeAff \cb ->
   runFn6 _collection name d noopCancel cb Left Right
+
+
+-- | Drop existing collection. Will throw if collection doesn't exist.
+dropCollection :: ∀ m. MonadAff m => String -> Database -> m Boolean
+dropCollection name d = liftAff $ makeAff \cb ->
+  runFn6 _dropCollection name d noopCancel cb Left Right
+
+
+-- | Inserts a single document into MongoDB
+createIndexes :: ∀ a m.
+  MonadAff m =>
+  Array IndexSpecification ->
+  Collection a ->
+  m Unit
+createIndexes specs c =
+  liftAff $ makeAff \cb ->
+    runFn6 _createIndexes (write specs) c noopCancel cb Left Right
 
 
 -- | Fetches the an array of documents that match the query
@@ -191,6 +223,31 @@ insertManyWithOptions :: ∀ a m.
   m InsertManyResult
 insertManyWithOptions items opts col = liftAff $ makeAff \cb ->
   runFn7 _insertMany (write items) (write opts) col noopCancel cb Left Right
+
+
+replaceOne :: ∀ a m.
+  EncodeJson a =>
+  MonadAff m =>
+  Query a ->
+  a ->
+  Collection a ->
+  m ReplaceOneResult
+replaceOne query doc c =
+  replaceOneWithOptions defaultReplaceOneOptions query doc c
+
+
+-- | Replaces a single document.
+replaceOneWithOptions :: ∀ a m.
+  EncodeJson a =>
+  MonadAff m =>
+  ReplaceOneOptions ->
+  Query a ->
+  a ->
+  Collection a ->
+  m ReplaceOneResult
+replaceOneWithOptions options query doc c =
+  liftAff $ makeAff \cb ->
+    runFn8 _replaceOne (write query) (write doc) (write options) c noopCancel cb Left Right
 
 
 -- | Update a single document in a collection
@@ -381,6 +438,16 @@ foreign import _collection :: ∀ a.
     (Effect Canceler)
 
 
+foreign import _dropCollection :: ∀ a.
+  Fn6 String
+    Database
+    (Database -> Canceler)
+    (Either Error Boolean -> Effect Unit)
+    (Error -> Either Error Boolean)
+    (Boolean -> Either Error Boolean)
+    (Effect Canceler)
+
+
 foreign import _collect ::
   Fn5 Cursor
     (Cursor -> Canceler)
@@ -396,6 +463,17 @@ foreign import _collectOne ::
     (Either Error Json -> Effect Unit)
     (Error -> Either Error Json)
     (Json -> Either Error Json)
+    (Effect Canceler)
+
+
+foreign import _createIndexes :: ∀ a.
+  Fn6
+    Json
+    (Collection a)
+    (Collection a -> Canceler)
+    (Either Error Unit -> Effect Unit)
+    (Error -> Either Error Unit)
+    (Unit -> Either Error Unit)
     (Effect Canceler)
 
 
@@ -440,6 +518,19 @@ foreign import _insertMany :: ∀ a.
     (Collection a)
     (Collection a -> Canceler)
     (Either Error InsertManyResult -> Effect Unit)
+    (Error -> Either Error Json)
+    (Json -> Either Error Json)
+    (Effect Canceler)
+
+
+foreign import _replaceOne :: ∀ a.
+  Fn8
+    Json
+    Json
+    Json
+    (Collection a)
+    (Collection a -> Canceler)
+    (Either Error ReplaceOneResult -> Effect Unit)
     (Error -> Either Error Json)
     (Json -> Either Error Json)
     (Effect Canceler)

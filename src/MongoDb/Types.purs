@@ -20,6 +20,10 @@ type InsertOneResult =
   , insertedId :: ObjectId
   }
 
+type ReplaceOneResult =
+  { success :: Boolean
+  }
+
 
 type InsertManyResult =
   { success :: Boolean

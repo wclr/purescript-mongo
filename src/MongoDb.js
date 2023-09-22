@@ -2,77 +2,112 @@
 
 //import { MongoClient as client } from "mongodb";
 import mongodb from "mongodb";
-const client = mongodb.MongoClient
+const MongoClient = mongodb.MongoClient;
 
-export const _connect = function _connect(uri, canceler, callback, left, right) {
-  client.connect(
-    uri,
-    { useNewUrlParser: true, useUnifiedTopology: true },
-    function (err, x) {
-      if (err) {
-        return callback(left(err))();
-      }
-
-      return callback(right(x))();
-    }
+export const _connect = (uri, canceler, callback, left, right) => {
+  handleP(
+    MongoClient.connect(uri, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    }),
+    callback,
+    left,
+    right
   );
 
-  return canceler(client);
+  return canceler(MongoClient);
 };
 
-export const _defaultDb = function _defaultDb(client) {
+/**
+ * @param {mongodb.MongoClient} client
+ */
+export const _defaultDb = (client) => {
   return client.db();
 };
 
-export const _db = function _defaultDb(dbName, options, client) {
+/**
+ * @param {mongodb.MongoClient} client
+ */
+export const _db = (dbName, options, client) => {
   return client.db(dbName, options);
 };
 
-export const __db = function _defaultDb(dbName, client) {
+/**
+ * @param {mongodb.MongoClient} client
+ */
+export const __db = (dbName, client) => {
   return client.db(dbName);
 };
 
-export const _handleParseFailure = function _handleParseFailure(
-  err,
-  canceler,
-  errback
-) {
+export const _handleParseFailure = (err, canceler, errback) => {
   process.nextTick(function () {
     errback(err)();
-  });  
-  return canceler(client);
+  });
+  return canceler(MongoClient);
 };
 
+const handler = (callback, left, right) => (err, x) => {
+  (err ? callback(left(err)) : callback(right(x)))();
+};
 
+const handleP = (p, callback, left, right) => {
+  return p
+    .then((x) => callback(right(x))())
+    .catch((err) => callback(left(err))());
+};
+
+/**
+ * @param {mongodb.MongoClient} client
+ */
 export const _close = function _close(client, canceler, callback, left, right) {
-  client.close(function (err, x) {
-    (err ? callback(left(err)) : callback(right(x)))();
-  });
+  handleP(client.close(), callback, left, right);
   return canceler({});
 };
 
+/**
+ * @param {mongodb.Db} db
+ */
+export const _collection = (name, db, canceler, callback, left, right) => {
+  //handleP(db.collection(name), callback, left, right);
+  db.collection(name, handler(callback, left, right));
+  return canceler(db);
+};
 
-export const _collection = function _collection(
-  name,
-  db,
+/**
+ * @param {mongodb.Db} db
+ */
+export const _dropCollection = (name, db, canceler, callback, left, right) => {
+  handleP(db.dropCollection(name), callback, left, right);
+  return canceler(db);
+};
+
+/**
+ * @param {mongodb.Db} db
+ */
+export const _dropDatabase = (db, canceler, callback, left, right) => {
+  handleP(db.dropDatabase, callback, left, right);
+  return canceler(db);
+};
+
+/**
+ * @param {mongodb.Cursor} cursor
+ */
+export const _collect = function _collect(
+  cursor,
   canceler,
   callback,
   left,
   right
 ) {
-  db.collection(name, function (err, x) {
-    (err ? callback(left(err)) : callback(right(x)))();
-  });
-  return canceler(db);
-};
-
-export const _collect = function _collect(cursor, canceler, callback, left, right) {
   cursor.toArray(function (err, x) {
     (err ? callback(left(err)) : callback(right(x)))();
   });
   return canceler(cursor);
 };
 
+/**
+ * @param {mongodb.Cursor} cursor
+ */
 export const _collectOne = function _collectOne(
   cursor,
   canceler,
@@ -94,6 +129,9 @@ export const _collectOne = function _collectOne(
   return canceler(cursor);
 };
 
+/**
+ * @param {mongodb.Collection} collection
+ */
 export const _findOne = function _findOne(
   selector,
   fields,
@@ -110,7 +148,23 @@ export const _findOne = function _findOne(
 };
 
 /**
- * @param {import("mongodb").Collection} collection
+ * @param {mongodb.Collection} collection
+ */
+export const _createIndexes = (
+  specs,
+  collection,
+  canceler,
+  callback,
+  left,
+  right
+) => {
+  handleP(collection.createIndexes(specs), callback, left, right);
+
+  return canceler(collection);
+};
+
+/**
+ * @param {mongodb.Collection} collection
  */
 export const _find = function _find(
   selector,
@@ -133,7 +187,7 @@ export const _find = function _find(
 };
 
 /**
- * @param {import("mongodb").Collection} collection
+ * @param {mongodb.Collection} collection
  */
 export const _insertOne = function _insertOne(
   json,
@@ -151,6 +205,28 @@ export const _insertOne = function _insertOne(
           right({ success: x.result.ok === 1, insertedId: x.insertedId })
         ))();
   });
+  return canceler(collection);
+};
+
+/**
+ * @param {mongodb.Collection} collection
+ * @param {mongodb.ReplaceOneOptions} options
+ */
+export const _replaceOne = (
+  query,
+  json,
+  options,
+  collection,
+  canceler,
+  callback,
+  left,
+  right
+) => {
+  handleP(collection.replaceOne(query, json, options), callback, left, (r) => {    
+    //upsertedId: { index: 0, _id: 650d43ab5cf694bec9fbd599 } - if was upserted (doc not existed)
+    return right({ success: r.result.ok === 1 });
+  });
+
   return canceler(collection);
 };
 

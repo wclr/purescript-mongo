@@ -14,6 +14,10 @@ export const generate = () => {
   return new ObjectId();
 };
 
-export const fromString = function (s) {
-  return new ObjectId(s);
+export const fromString_ = (left) => (right) => (s) => {
+  try {
+    return right(new ObjectId(s));
+  } catch (e) {
+    return left(e);
+  }
 };
