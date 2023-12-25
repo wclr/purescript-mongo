@@ -1,365 +1,186 @@
-"use strict";
+import mongodb from "mongodb"
 
-//import { MongoClient as client } from "mongodb";
-import mongodb from "mongodb";
-const MongoClient = mongodb.MongoClient;
+/**
+ * @template T
+ * @typedef {() => T} Effect<T>
+ */
 
-export const _connect = (uri, canceler, callback, left, right) => {
-  handleP(
-    MongoClient.connect(uri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    }),
-    callback,
-    left,
-    right
-  );
-
-  return canceler(MongoClient);
-};
+/**
+ * @param {String} uri
+ * @returns {Effect<Promise<mongodb.MongoClient>>}
+ */
+export const _connect = uri => {
+  return () => mongodb.MongoClient.connect(uri)
+}
 
 /**
  * @param {mongodb.MongoClient} client
+ * @returns {Effect<mongodb.Db>}
  */
-export const _defaultDb = (client) => {
-  return client.db();
-};
+export const _defaultDb = client => {
+  return () => client.db()
+}
 
 /**
  * @param {mongodb.MongoClient} client
+ * @param {string} dbName
+ * @returns {Effect<mongodb.Db>}
  */
-export const _db = (dbName, options, client) => {
-  return client.db(dbName, options);
-};
+export const _db = (client, dbName) => {
+  return () => client.db(dbName)
+}
 
 /**
  * @param {mongodb.MongoClient} client
+ * @returns {Effect<Promise<void>>}
  */
-export const __db = (dbName, client) => {
-  return client.db(dbName);
-};
-
-export const _handleParseFailure = (err, canceler, errback) => {
-  process.nextTick(function () {
-    errback(err)();
-  });
-  return canceler(MongoClient);
-};
-
-const handler = (callback, left, right) => (err, x) => {
-  (err ? callback(left(err)) : callback(right(x)))();
-};
-
-const handleP = (p, callback, left, right) => {
-  return p
-    .then((x) => callback(right(x))())
-    .catch((err) => callback(left(err))());
-};
-
-/**
- * @param {mongodb.MongoClient} client
- */
-export const _close = function _close(client, canceler, callback, left, right) {
-  handleP(client.close(), callback, left, right);
-  return canceler({});
-};
+export const _close = function _close(client) {
+  return () => client.close()
+}
 
 /**
  * @param {mongodb.Db} db
+ * @returns {Effect<mongodb.Collection>}
  */
-export const _collection = (name, db, canceler, callback, left, right) => {
-  //handleP(db.collection(name), callback, left, right);
-  db.collection(name, handler(callback, left, right));
-  return canceler(db);
-};
+export const _collection = (db, name) => {
+  return () => db.collection(name)
+}
 
 /**
  * @param {mongodb.Db} db
+ * @param {string} db
+ * @returns {Effect<Promise<boolean>>}
  */
-export const _dropCollection = (name, db, canceler, callback, left, right) => {
-  handleP(db.dropCollection(name), callback, left, right);
-  return canceler(db);
-};
+export const _dropCollection = (db, name) => {
+  return () => db.dropCollection(name)
+}
 
 /**
  * @param {mongodb.Db} db
+ * @returns {Effect<Promise<boolean>>}
  */
-export const _dropDatabase = (db, canceler, callback, left, right) => {
-  handleP(db.dropDatabase, callback, left, right);
-  return canceler(db);
-};
+export const _dropDatabase = db => {
+  return () => db.dropDatabase()
+}
 
 /**
- * @param {mongodb.Cursor} cursor
+ * @param {mongodb.Db} db
+ * @returns {string}
  */
-export const _collect = function _collect(
-  cursor,
-  canceler,
-  callback,
-  left,
-  right
-) {
-  cursor.toArray(function (err, x) {
-    (err ? callback(left(err)) : callback(right(x)))();
-  });
-  return canceler(cursor);
-};
-
-/**
- * @param {mongodb.Cursor} cursor
- */
-export const _collectOne = function _collectOne(
-  cursor,
-  canceler,
-  callback,
-  left,
-  right
-) {
-  cursor.next(function (err, x) {
-    if (err) {
-      callback(left(err))();
-    } else if (x === null) {
-      var error = new Error("Not Found.");
-      error.name = "MongoError";
-      callback(left(error))();
-    } else {
-      callback(right(x))();
-    }
-  });
-  return canceler(cursor);
-};
+export const databaseName = db => {
+  return db.databaseName
+}
 
 /**
  * @param {mongodb.Collection} collection
+ * @param {mongodb.IndexDescription[]} indexSpecs
+ * @returns {Effect<Promise<string[]>>}
  */
-export const _findOne = function _findOne(
-  selector,
-  fields,
-  collection,
-  canceler,
-  callback,
-  left,
-  right
-) {
-  collection.findOne(selector, fields, function (err, x) {
-    (err ? callback(left(err)) : callback(right(x)))();
-  });
-  return canceler(collection);
-};
+export const _createIndexes = (collection, indexSpecs) => {
+  return () => collection.createIndexes(indexSpecs)
+}
+
+/**
+ * @typedef {Object} CountDocumentOptions
+ *
+ */
 
 /**
  * @param {mongodb.Collection} collection
+ * @param {mongodb.Filter<any>} filter
+ * @param {CountDocumentOptions | null} options
+ * @returns {Effect<Promise<number>>}
  */
-export const _createIndexes = (
-  specs,
-  collection,
-  canceler,
-  callback,
-  left,
-  right
-) => {
-  handleP(collection.createIndexes(specs), callback, left, right);
+export const _countDocuments = (collection, filter, options) => {
+  return () => collection.countDocuments(filter, options)
+}
 
-  return canceler(collection);
-};
+/**
+ * @typedef {Object} FindOptions
+ * @property {number | null} limit
+ * @property {number | null} skip
+ * @property {Object | null} sort
+ * @property {Object | null} projection
+ */
 
 /**
  * @param {mongodb.Collection} collection
+ * @param {mongodb.Filter<any>} filter
+ * @param {FindOptions | null} options
+ * @returns {Effect<Promise<mongodb.Document>>}
  */
-export const _find = function _find(
-  selector,
-  fields,
-  collection,
-  canceler,
-  callback,
-  left,
-  right
-) {
-  try {
-    callback(right(collection.find(selector, fields)))();
-  } catch (err) {
-    callback(left(err))();
-  }
-  // collection.find(selector, fields, function (err, x) {
-  //   (err ? callback(left(err)) : callback(right(x)))();
-  // });
-  return canceler(collection);
-};
+export const _findOne = (collection, filter, options) => {
+  return () => collection.findOne(filter, options)
+}
 
 /**
  * @param {mongodb.Collection} collection
+ * @param {mongodb.Filter<any> | null} filter
+ * @param {FindOptions | null} options
+ * @returns {Effect<mongodb.FindCursor>}
  */
-export const _insertOne = function _insertOne(
-  json,
-  options,
-  collection,
-  canceler,
-  callback,
-  left,
-  right
-) {
-  collection.insertOne(json, options, function (err, x) {
-    (err
-      ? callback(left(err))
-      : callback(
-          right({ success: x.result.ok === 1, insertedId: x.insertedId })
-        ))();
-  });
-  return canceler(collection);
-};
+export const _find = (collection, filter, options) => {
+  return () => collection.find(filter, options)
+}
+
+/**
+ * @param {mongodb.FindCursor} cursor
+ * @returns {Effect<Promise<Array<mongodb.Document>>>}
+ */
+export const _cursorToArray = cursor => {
+  return () => cursor.toArray()
+}
+
+/**
+ * @param {mongodb.FindCursor} cursor
+ * @returns {Effect<Promise<mongodb.Document | null>>}
+ */
+export const _cursorNext = cursor => {
+  return () => cursor.next()
+}
+
+/**
+ * @typedef {Object} InsertOneOptions
+ * 
+ * 
+ * @typedef {Object} InsertOneResult
+ * @property { Boolean} acknowledged
+   @property {Object} insertedId
+ */
 
 /**
  * @param {mongodb.Collection} collection
- * @param {mongodb.ReplaceOneOptions} options
+ * @param {mongodb.Document} doc
+ * @param {InsertOneOptions | null} options
+ * @returns {Effect<Promise<InsertOneResult>>}
  */
-export const _replaceOne = (
-  query,
-  json,
-  options,
-  collection,
-  canceler,
-  callback,
-  left,
-  right
-) => {
-  handleP(collection.replaceOne(query, json, options), callback, left, (r) => {    
-    //upsertedId: { index: 0, _id: 650d43ab5cf694bec9fbd599 } - if was upserted (doc not existed)
-    return right({ success: r.result.ok === 1 });
-  });
-
-  return canceler(collection);
-};
-
-export const _insertMany = function _insertMany(
-  json,
-  options,
-  collection,
-  canceler,
-  callback,
-  left,
-  right
-) {
-  collection.insertMany(json, options, function (err, x) {
-    (err
-      ? callback(left(err))
-      : callback(
-          right({ success: x.result.ok === 1, insertedCount: x.insertedCount })
-        ))();
-  });
-  return canceler(collection);
-};
-
-export const _updateOne = function (
-  selector,
-  json,
-  options,
-  collection,
-  canceler,
-  callback,
-  left,
-  right
-) {
-  collection.updateOne(selector, { $set: json }, options, function (err, x) {
-    (err
-      ? callback(left(err))
-      : callback(right({ success: x.result.ok === 1 })))();
-  });
-
-  return canceler(collection);
-};
+export const _insertOne = (collection, doc, options) => {
+  return () => collection.insertOne(doc, options)
+}
 
 /**
- * @param {import("mongodb").Collection} collection
+ * @typedef {Object} ReplaceOptions
+ * @property {boolean} upsert
  */
-export const _updateMany = function (
-  selector,
-  json,
-  options,
-  collection,
-  canceler,
-  callback,
-  left,
-  right
-) {
-  collection.updateMany(selector, { $set: json }, options, function (err, x) {
-    (err
-      ? callback(left(err))
-      : callback(right({ success: x.result.ok === 1 })))();
-  });
-
-  return canceler(collection);
-};
-
-// note that can not use arrow (=>) functions here
-// because of: https://github.com/purescript/purescript/issues/4124
-/**
- * @param {import("mongodb").Collection} collection
- */
-export const _deleteOne = function (
-  filter,
-  options,
-  collection,
-  canceler,
-  callback,
-  left,
-  right
-) {
-  collection.deleteOne(filter, options, function (err, x) {
-    (err
-      ? callback(left(err))
-      : callback(right({ success: x.result.ok === 1 })))();
-  });
-  return canceler(collection);
-};
 
 /**
- * @param {import("mongodb").Collection} collection
+ * @typedef {Object} UpdateResult
+ * @property {boolean} acknowledged
+ * @property {number} matchedCount
+ * @property {number} modifiedCount
+ * @property {number} upsertedCount
+ * @property {number | null} upsertedId
+ *
  */
-export const _deleteMany = function (
-  filter,
-  options,
-  collection,
-  canceler,
-  callback,
-  left,
-  right
-) {
-  collection.deleteMany(filter, options, function (err, x) {
-    (err
-      ? callback(left(err))
-      : callback(right({ success: x.result.ok === 1 })))();
-  });
-  return canceler(collection);
-};
 
-export const _countDocuments = function (
-  selector,
-  options,
-  collection,
-  canceler,
-  callback,
-  left,
-  right
-) {
-  collection.countDocuments(selector, options, function (err, x) {
-    (err ? callback(left(err)) : callback(right(x)))();
-  });
-
-  return canceler(collection);
-};
-
-export const _aggregate = function (
-  pipeline,
-  options,
-  collection,
-  canceler,
-  callback,
-  left,
-  right
-) {
-  collection["aggregate"](pipeline, options, function (err, x) {
-    (err ? callback(left(err)) : callback(right(x)))();
-  });
-
-  return canceler(collection);
-};
+/**
+ * @param {mongodb.Collection} collection
+ * @param {mongodb.Filter<Document>} doc
+ * @param {mongodb.Document} doc
+ * @param {ReplaceOptions | null} options
+ * This is probably a mistake in typings that it may return Document
+ * @returns {Effect<Promise<mongodb.UpdateResult | mongodb.Document>>}
+ */
+export const _replaceOne = (collection, filter, doc, options) => {
+  return () => collection.replaceOne(filter, doc, options)
+}

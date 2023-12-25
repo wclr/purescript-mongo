@@ -1,606 +1,363 @@
 module MongoDb
   ( Client
-  , Database
+  , Db
   , Collection
-  , Cursor
+  , FindCursor
+  , Document
+  , InsertedId
+
+  , FindOptions
+  , defaultFindOptions
+
+  , ReplaceOptions
+  , defaultReplaceOptions
+
+  , Filter
+  , noFilter
+  , byId
+
   , connect
   , defaultDb
   , db
   , close
   , collection
   , dropCollection
+  , dropDatabase
   , createIndexes
+
+  , databaseName
+
+  , countDocuments
+
+  , unsafeToJson
+  , fromJson
 
   , find
   , findWithOptions
+
+  , cursorToArray
+  , cursorNext
+
   , findOne
   , findOneWithOptions
+
+  , findMany
+  , findManyWithOptions
+  -- , findOneWithOptions
   , insertOne
-  , insertOneWithOptions
-  , updateOne
-  , updateOneWithOptions
+  -- , insertOneWithOptions
+  --, updateOne
+  -- , updateOneWithOptions
   , replaceOne
   , replaceOneWithOptions
 
-  , updateMany
-  , updateManyWithOptions
+  -- , updateMany
+  -- , updateManyWithOptions
 
-  , insertMany
-  , insertManyWithOptions
-  , deleteOne
-  , deleteMany
-  , deleteManyWithOptions
-  , countDocuments
-  , aggregate
-  , module MongoDb.Options
-  , module MongoDb.Types
-  , module MongoDb.ObjectId
+  -- , insertMany
+  -- , insertManyWithOptions
+  -- , deleteOne
+  -- , deleteMany
+  -- , deleteManyWithOptions
   , module Reexport
   ) where
 
 
 import Prelude
 
-import Control.Bind (bindFlipped)
 import Data.Argonaut.Core (Json)
-import Data.Argonaut.Decode (class DecodeJson, JsonDecodeError, decodeJson)
-import Data.Argonaut.Encode (class EncodeJson, encodeJson)
-import Data.Bifunctor (lmap)
-import Data.Either (Either(..))
-import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn5, Fn6, Fn7, Fn8, runFn1, runFn2, runFn5, runFn6, runFn7, runFn8)
+import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn4, runFn1, runFn2, runFn3, runFn4)
 import Data.Maybe (Maybe)
-import Data.Nullable (null)
+import Data.Nullable (Nullable, notNull, null, toMaybe)
 import Effect (Effect)
-import Effect.Aff (Canceler, error, makeAff, nonCanceler)
-import Effect.Aff.Class (class MonadAff, liftAff)
-import Effect.Exception (Error)
+import Effect.Aff (Aff)
+import Effect.Class (liftEffect)
 import Foreign.Object (Object)
-import MongoDb.ObjectId (ObjectId)
 import MongoDb.ObjectId (ObjectId) as Reexport
-import MongoDb.Options (InsertOptions(..), UpdateOptions(..), defaultInsertOptions, defaultUpdateOptions) as Reexport
-import MongoDb.Options (InsertOptions, ReplaceOneOptions(..), UpdateOptions, defaultInsertOptions, defaultReplaceOneOptions, defaultUpdateOptions)
-import MongoDb.Query (Query)
-import MongoDb.Types (AggregationOptions, CountOptions, DeleteResult, FindOptions, InsertManyResult, InsertOneResult, RemoveOptions, ReplaceOneResult, UpdateResult)
+import Promise.Aff (Promise, toAffE)
+import Unsafe.Coerce (unsafeCoerce)
 
 
 foreign import data Client :: Type
-foreign import data Database :: Type
-foreign import data Collection :: Type -> Type
-foreign import data Cursor :: Type
+foreign import data Db :: Type
+foreign import data Collection :: Type
+foreign import data FindCursor :: Type
 
 
-type IndexSpecification =
-  { unique :: Boolean
-  , name :: String
-  , key :: Object Int
+-- | Document is type containing JS representation of MongoDb object content.
+foreign import data Document :: Type
+
+
+data Filter = Filter
+
+
+noFilter :: Filter
+noFilter = Filter
+
+
+byId :: ∀ id. id -> Filter
+byId _id = unsafeCoerce { _id }
+
+
+-- IndexDirection = -1 | 1 | '2d' | '2dsphere' | 'text' | 'geoHaystack' | 'hashed' | number;
+type IndexDirection = Int
+type IndexName = String
+
+
+type IndexDescription =
+  { name :: IndexName
+  , unique :: Boolean
+  , key :: Object IndexDirection
   }
 
 
-write :: ∀ a. EncodeJson a => a -> Json
-write = encodeJson
+type ReplaceOptions = { upsert :: Boolean }
 
 
-read :: ∀ a. DecodeJson a => Json -> Either JsonDecodeError a
-read = decodeJson
+type CountDocumentsOptions = {}
+
+--newtype SortOrder = SortOrder Int
+
+-- asc :: String -> SortOrder
+-- asc field = [ field,  1 ]
+
+-- desc :: String -> SortOrder
+-- desc field = [ field, 0 ]
 
 
--- | Connect to MongoDB using a url as documented at
--- | docs.mongodb.org/manual/reference/connection-string/
-connect :: ∀ m. MonadAff m => String -> m Client
-connect str = liftAff $ makeAff \cb ->
-  runFn5 _connect str noopCancel cb Left Right
-
-
--- | Get the default database
-defaultDb :: Client -> Database
-defaultDb = runFn1 _defaultDb
-
-
--- | Get database from client by name
-db :: String -> Client -> Database
-db = runFn2 __db
-
-
--- | Close the connection to the database
-close :: ∀ m. MonadAff m => Client -> m Unit
-close cli = liftAff $ makeAff \cb ->
-  runFn5 _close cli noopCancel cb Left Right
-
-
--- | Fetch a specific collection by name
-collection :: ∀ a m. MonadAff m => String -> Database -> m (Collection a)
-collection name d = liftAff $ makeAff \cb ->
-  runFn6 _collection name d noopCancel cb Left Right
-
-
--- | Drop existing collection. Will throw if collection doesn't exist.
-dropCollection :: ∀ m. MonadAff m => String -> Database -> m Boolean
-dropCollection name d = liftAff $ makeAff \cb ->
-  runFn6 _dropCollection name d noopCancel cb Left Right
-
-
--- | Inserts a single document into MongoDB
-createIndexes :: ∀ a m.
-  MonadAff m =>
-  Array IndexSpecification ->
-  Collection a ->
-  m Unit
-createIndexes specs c =
-  liftAff $ makeAff \cb ->
-    runFn6 _createIndexes (write specs) c noopCancel cb Left Right
-
-
--- | Fetches the an array of documents that match the query
-find :: ∀ a m.
-  MonadAff m =>
-  DecodeJson a =>
-  Query a ->
-  Collection a ->
-  m (Array a)
-find query col = findWithOptions query defaultFindOptions col
-
-
-findWithOptions :: ∀ a m.
-  MonadAff m =>
-  DecodeJson a =>
-  Query a ->
-  FindOptions ->
-  Collection a ->
-  m (Array a)
-findWithOptions q opts col = liftAff $ makeAff find' >>= collect
-  where
-  find' cb = runFn7 _find (write q) opts col noopCancel cb Left Right
-
-
--- | Fetches the first document that matches the query
-findOne :: ∀ a m.
-  MonadAff m =>
-  DecodeJson a =>
-  Query a ->
-  Collection a ->
-  m (Maybe a)
-findOne q col =
-  findOneWithOptions q defaultFindOptions col
-
-
--- | Fetches the first document that matches the query
-findOneWithOptions :: ∀ a m.
-  MonadAff m =>
-  DecodeJson a =>
-  Query a ->
-  FindOptions ->
-  Collection a ->
-  m (Maybe a)
-findOneWithOptions q opts col = liftAff $ makeAff findOne'
-  where
-  findOne' cb =
-    runFn7 _findOne (write q) opts col noopCancel (cb <<< bindFlipped parse) Left Right
-  parse = lmap (error <<< show) <<< read
-
-
--- | Inserts a single document into MongoDB
-insertOne :: ∀ a m.
-  EncodeJson a =>
-  MonadAff m =>
-  a ->
-  Collection a ->
-  m InsertOneResult
-insertOne doc c =
-  insertOneWithOptions doc defaultInsertOptions c
-
-
--- | Inserts a single document into MongoDB
-insertOneWithOptions :: ∀ a m.
-  EncodeJson a =>
-  MonadAff m =>
-  a ->
-  InsertOptions ->
-  Collection a ->
-  m InsertOneResult
-insertOneWithOptions doc options c =
-  liftAff $ makeAff \cb ->
-    runFn7 _insertOne (write doc) (write options) c noopCancel cb Left Right
-
-
--- | Inserts an array of documents into MongoDB
-insertMany :: ∀ a m.
-  EncodeJson a =>
-  MonadAff m =>
-  Array a ->
-  Collection a ->
-  m InsertManyResult
-insertMany items col =
-  insertManyWithOptions items defaultInsertOptions col
-
-
--- | Inserts an array of documents into MongoDB
-insertManyWithOptions :: ∀ a m.
-  EncodeJson a =>
-  MonadAff m =>
-  Array a ->
-  InsertOptions ->
-  Collection a ->
-  m InsertManyResult
-insertManyWithOptions items opts col = liftAff $ makeAff \cb ->
-  runFn7 _insertMany (write items) (write opts) col noopCancel cb Left Right
-
-
-replaceOne :: ∀ a m.
-  EncodeJson a =>
-  MonadAff m =>
-  Query a ->
-  a ->
-  Collection a ->
-  m ReplaceOneResult
-replaceOne query doc c =
-  replaceOneWithOptions defaultReplaceOneOptions query doc c
-
-
--- | Replaces a single document.
-replaceOneWithOptions :: ∀ a m.
-  EncodeJson a =>
-  MonadAff m =>
-  ReplaceOneOptions ->
-  Query a ->
-  a ->
-  Collection a ->
-  m ReplaceOneResult
-replaceOneWithOptions options query doc c =
-  liftAff $ makeAff \cb ->
-    runFn8 _replaceOne (write query) (write doc) (write options) c noopCancel cb Left Right
-
-
--- | Update a single document in a collection
-updateOne :: ∀ a m. EncodeJson a => MonadAff m => Query a -> a -> Collection a -> m UpdateResult
-updateOne q u c =
-  updateOneWithOptions defaultUpdateOptions q u c
-
-
--- | Update a single document in a collection
-updateOneWithOptions :: ∀ a m.
-  EncodeJson a => MonadAff m =>
-  UpdateOptions ->
-  Query a ->
-  a ->
-  Collection a ->
-  m UpdateResult
-updateOneWithOptions o q u c = liftAff $ makeAff \cb ->
-  runFn8 _updateOne (write q) (write u) (write o) c noopCancel cb Left Right
-
-
--- | Update a single document in a collection
-updateMany :: ∀ a m.
-  EncodeJson a =>
-  MonadAff m =>
-  Query a ->
-  Array a ->
-  Collection a ->
-  m UpdateResult
-updateMany q u c =
-  updateManyWithOptions q u defaultUpdateOptions c
-
-
--- | Update a single document in a collection
-updateManyWithOptions :: ∀ a m.
-  EncodeJson a =>
-  MonadAff m =>
-  Query a ->
-  Array a ->
-  UpdateOptions ->
-  Collection a ->
-  m UpdateResult
-updateManyWithOptions q u o c = liftAff $ makeAff \cb ->
-  runFn8 _updateMany (write q) (write u) (write o) c noopCancel cb Left Right
-
-
-deleteOne :: ∀ a m.
-  MonadAff m =>
-  DecodeJson a =>
-  Query a ->
-  InsertOptions ->
-  Collection a ->
-  m DeleteResult
-deleteOne query opts col = liftAff $ makeAff
-  \cb -> runFn7 _deleteOne (write query) opts col noopCancel cb Left Right
-
-
-deleteMany :: ∀ a m.
-  MonadAff m =>
-  --DecodeJson a =>
-  Query a ->
-  Collection a ->
-  m DeleteResult
-deleteMany query col = liftAff $ makeAff
-  \cb -> runFn7 _deleteMany (write query) defaultInsertOptions col noopCancel cb Left Right
-
-
-deleteManyWithOptions :: ∀ a m.
-  MonadAff m =>
-  DecodeJson a =>
-  Query a ->
-  InsertOptions ->
-  Collection a ->
-  m DeleteResult
-deleteManyWithOptions query opts col = liftAff $ makeAff
-  \cb -> runFn7 _deleteMany (write query) opts col noopCancel cb Left Right
-
-
--- | Gets the number of documents matching the filter
-countDocuments :: ∀ a m. MonadAff m =>
-  Query a -> Collection a -> m Int
-countDocuments q col =
-  countDocumentsWithOptions q defaultCountOptions col
-
-
-countDocumentsWithOptions :: ∀ a m. MonadAff m =>
-  Query a -> CountOptions -> Collection a -> m Int
-countDocumentsWithOptions q o col = liftAff $ makeAff \cb ->
-  runFn7 _countDocuments (write q) o col noopCancel cb Left Right
-
-
--- | WIP: implement typesafe aggregation pipelines
--- | Calculates aggregate values for the data in a collection
-aggregate :: ∀ a m.
-  DecodeJson a => MonadAff m =>
-  Array Json ->
-  AggregationOptions ->
-  Collection a ->
-  m (Array a)
-aggregate p o col = liftAff $ makeAff aggregate' >>= collect
-  where
-  aggregate' cb = runFn7 _aggregate p o col noopCancel cb Left Right
+type FindOptions =
+  { limit :: Nullable Int
+  , skip :: Nullable Int
+  -- | 1 means lower will be the first in result, -1 means opposite
+  , sort :: Nullable (Object Int)
+  , projection :: Nullable (Object Int)
+  }
 
 
 defaultFindOptions :: FindOptions
 defaultFindOptions =
-  { limit: null, skip: null, sort: null }
-
-
-defaultRemoveOptions :: RemoveOptions
-defaultRemoveOptions =
-  { justOne: false }
-
-
-defaultCountOptions :: CountOptions
-defaultCountOptions =
-  { limit: null, maxTimeMS: null, skip: null, hint: null }
-
-
-{-
-defaultAggregationOptions :: AggregationOptions
-defaultAggregationOptions =
-  { explain: null
-  , allowDiskUse: null
-  , cursor: null
-  , maxTimeMS: null
-  , readConcern: null
-  , hint: null
+  { limit: null
+  , skip: null
+  , sort: null
+  , projection: null
   }
 
- -}
+
+type InsertOneOptions =
+  {
+  }
 
 
-collect :: ∀ a m.
-  DecodeJson a => MonadAff m =>
-  Cursor ->
-  m (Array a)
-collect cur = liftAff $ makeAff \cb ->
-  runFn5 _collect cur noopCancel (cb <<< bindFlipped parse) Left Right
-  where
-  parse = lmap (error <<< show) <<< read
+-- We actually don't know type of insertedId
+foreign import data InsertedId :: Type
 
 
--- | Do nothing on cancel.
-noopCancel :: forall a. a -> Canceler
-noopCancel _ = nonCanceler
+type InsertOneResult =
+  { acknowledged :: Boolean
+  , insertedId :: InsertedId
+  }
 
 
--- FOREIGN
+type UpdateResult =
+  { acknowledged :: Boolean
+  , matchedCount :: Int
+  , modifiedCount :: Int
+  , upsertedCount :: Int
+  , upsertedId :: Nullable InsertedId
+  }
 
 
-foreign import _connect ::
-  Fn5 String
-    (Client -> Canceler)
-    (Either Error Client -> Effect Unit)
-    (Error -> Either Error Client)
-    (Client -> Either Error Client)
-    (Effect Canceler)
+defaultReplaceOptions :: ReplaceOptions
+defaultReplaceOptions =
+  { upsert: false
+  }
 
 
-foreign import _defaultDb :: Fn1 Client Database
-foreign import _db :: Fn3 String Json Client Database
-foreign import __db :: Fn2 String Client Database
+-- Move to separate module.
+unsafeToJson :: Document -> Json
+unsafeToJson =
+  unsafeCoerce
 
 
-foreign import _handleParseFailure ::
-  Fn3 Error
-    (Client -> Canceler)
-    (Error -> Effect Unit)
-    (Effect Canceler)
+fromJson :: Json -> Document
+fromJson =
+  unsafeCoerce
 
 
-foreign import _close ::
-  Fn5 Client
-    (Unit -> Canceler)
-    (Either Error Unit -> Effect Unit)
-    (Error -> Either Error Unit)
-    (Unit -> Either Error Unit)
-    (Effect Canceler)
+-- CLIENT METHODS
 
 
-foreign import _collection :: ∀ a.
-  Fn6 String
-    Database
-    (Database -> Canceler)
-    (Either Error (Collection a) -> Effect Unit)
-    (Error -> Either Error (Collection a))
-    (Collection a -> Either Error (Collection a))
-    (Effect Canceler)
+-- | Connect to MongoDB using a url as documented at
+-- | https://docs.mongodb.org/manual/reference/connection-string/
+connect :: String -> Aff Client
+connect =
+  toAffE <<< _connect
 
 
-foreign import _dropCollection :: ∀ a.
-  Fn6 String
-    Database
-    (Database -> Canceler)
-    (Either Error Boolean -> Effect Unit)
-    (Error -> Either Error Boolean)
-    (Boolean -> Either Error Boolean)
-    (Effect Canceler)
+-- | Create a new Db instance sharing the current socket connections.
+defaultDb :: Client -> Effect Db
+defaultDb =
+  runFn1 _defaultDb
 
 
-foreign import _collect ::
-  Fn5 Cursor
-    (Cursor -> Canceler)
-    (Either Error Json -> Effect Unit)
-    (Error -> Either Error Json)
-    (Json -> Either Error Json)
-    (Effect Canceler)
+-- | Create a new Db instance sharing the current socket connections.
+db :: Client -> String -> Effect Db
+db =
+  runFn2 _db
 
 
-foreign import _collectOne ::
-  Fn5 Cursor
-    (Cursor -> Canceler)
-    (Either Error Json -> Effect Unit)
-    (Error -> Either Error Json)
-    (Json -> Either Error Json)
-    (Effect Canceler)
+-- | Close the connection to the database
+close :: Client -> Aff Unit
+close =
+  toAffE <<< runFn1 _close
 
 
-foreign import _createIndexes :: ∀ a.
-  Fn6
-    Json
-    (Collection a)
-    (Collection a -> Canceler)
-    (Either Error Unit -> Effect Unit)
-    (Error -> Either Error Unit)
-    (Unit -> Either Error Unit)
-    (Effect Canceler)
+-- | Fetch a specific collection by name.
+collection :: Db -> String -> Effect (Collection)
+collection =
+  runFn2 _collection
 
 
-foreign import _findOne :: ∀ a.
-  Fn7 Json
-    FindOptions
-    (Collection a)
-    (Collection a -> Canceler)
-    (Either Error Json -> Effect Unit)
-    (Error -> Either Error Json)
-    (Json -> Either Error Json)
-    (Effect Canceler)
+-- | Drop existing collection. Will throw if collection doesn't exist.
+dropCollection :: Db -> String -> Aff Boolean
+dropCollection =
+  toAffE <<<< runFn2 _dropCollection
 
 
-foreign import _find :: ∀ a.
-  Fn7 Json
-    FindOptions
-    (Collection a)
-    (Collection a -> Canceler)
-    (Either Error Cursor -> Effect Unit)
-    (Error -> Either Error Cursor)
-    (Cursor -> Either Error Cursor)
-    (Effect Canceler)
+dropDatabase :: Db -> Aff Boolean
+dropDatabase =
+  toAffE <<< runFn1 _dropDatabase
 
 
-foreign import _insertOne :: ∀ a.
-  Fn7
-    Json
-    Json
-    (Collection a)
-    (Collection a -> Canceler)
-    (Either Error InsertOneResult -> Effect Unit)
-    (Error -> Either Error Json)
-    (Json -> Either Error Json)
-    (Effect Canceler)
+-- | Inserts a single document into MongoDB
+createIndexes :: Collection -> Array IndexDescription -> Aff (Array String)
+createIndexes =
+  toAffE <<<< runFn2 _createIndexes
 
 
-foreign import _insertMany :: ∀ a.
-  Fn7
-    Json
-    Json
-    (Collection a)
-    (Collection a -> Canceler)
-    (Either Error InsertManyResult -> Effect Unit)
-    (Error -> Either Error Json)
-    (Json -> Either Error Json)
-    (Effect Canceler)
+countDocuments :: Collection -> Filter -> Aff Int
+countDocuments col filter =
+  toAffE $ runFn3 _countDocuments col filter null
 
 
-foreign import _replaceOne :: ∀ a.
-  Fn8
-    Json
-    Json
-    Json
-    (Collection a)
-    (Collection a -> Canceler)
-    (Either Error ReplaceOneResult -> Effect Unit)
-    (Error -> Either Error Json)
-    (Json -> Either Error Json)
-    (Effect Canceler)
+findOne :: Collection -> Filter -> Aff (Maybe Document)
+findOne col filter =
+  map toMaybe <$> toAffE $ (runFn3 _findOne col filter null)
+
+findOneWithOptions :: Collection -> Filter -> FindOptions -> Aff (Maybe Document)
+findOneWithOptions col filter options =
+  map toMaybe <$> toAffE $ (runFn3 _findOne col filter (notNull options))
 
 
-foreign import _updateOne :: ∀ a.
-  Fn8
-    Json
-    Json
-    Json
-    (Collection a)
-    (Collection a -> Canceler)
-    (Either Error UpdateResult -> Effect Unit)
-    (Error -> Either Error Json)
-    (Json -> Either Error Json)
-    (Effect Canceler)
+insertOne :: Collection -> Document -> Aff InsertOneResult
+insertOne col doc =
+  toAffE $ (runFn3 _insertOne col doc null)
 
 
-foreign import _updateMany :: ∀ a.
-  Fn8
-    Json
-    Json
-    Json
-    (Collection a)
-    (Collection a -> Canceler)
-    (Either Error UpdateResult -> Effect Unit)
-    (Error -> Either Error Json)
-    (Json -> Either Error Json)
-    (Effect Canceler)
+find :: Collection -> Filter -> Effect FindCursor
+find col filter =
+  runFn3 _find col filter null
 
 
-foreign import _deleteOne :: ∀ a.
-  Fn7 Json
-    InsertOptions
-    (Collection a)
-    (Collection a -> Canceler)
-    (Either Error DeleteResult -> Effect Unit)
-    (Error -> Either Error Json)
-    (Json -> Either Error Json)
-    (Effect Canceler)
+findWithOptions :: Collection -> Filter -> FindOptions -> Effect FindCursor
+findWithOptions col filter options =
+  runFn3 _find col filter (notNull options)
 
 
-foreign import _deleteMany :: ∀ a.
-  Fn7 Json
-    InsertOptions
-    (Collection a)
-    (Collection a -> Canceler)
-    (Either Error DeleteResult -> Effect Unit)
-    (Error -> Either Error Json)
-    (Json -> Either Error Json)
-    (Effect Canceler)
+findMany :: Collection -> Filter -> Aff (Array Document)
+findMany col filter =
+  liftEffect (find col filter) >>= cursorToArray
 
 
-foreign import _countDocuments :: ∀ a.
-  Fn7 Json
-    (CountOptions)
-    (Collection a)
-    (Collection a -> Canceler)
-    (Either Error Int -> Effect Unit)
-    (Error -> Either Error Int)
-    (Int -> Either Error Int)
-    (Effect Canceler)
+findManyWithOptions :: Collection -> Filter -> FindOptions -> Aff (Array Document)
+findManyWithOptions col filter options =
+  liftEffect (findWithOptions col filter options) >>= cursorToArray
 
 
-foreign import _aggregate :: ∀ a.
-  Fn7 (Array Json)
-    (AggregationOptions)
-    (Collection a)
-    (Collection a -> Canceler)
-    (Either Error Cursor -> Effect Unit)
-    (Error -> Either Error Cursor)
-    (Cursor -> Either Error Cursor)
-    (Effect Canceler)
+cursorToArray :: FindCursor -> Aff (Array Document)
+cursorToArray =
+  toAffE <<< _cursorToArray
+
+
+cursorNext :: FindCursor -> Aff (Maybe Document)
+cursorNext =
+  map toMaybe <$> toAffE <<< _cursorNext
+
+
+replaceOne :: Collection -> Filter -> Document -> Aff UpdateResult
+replaceOne col filter replacement =
+  toAffE $ (runFn4 _replaceOne col filter replacement null)
+
+
+replaceOneWithOptions ::
+  Collection -> Filter -> Document -> ReplaceOptions -> Aff UpdateResult
+replaceOneWithOptions col filter replacement options =
+  toAffE $ (runFn4 _replaceOne col filter replacement (notNull options))
+
+
+-- -- FOREIGN
+
+
+foreign import _connect :: String -> Effect (Promise Client)
+foreign import _defaultDb :: Client -> (Effect Db)
+foreign import _db :: Fn2 Client String (Effect Db)
+foreign import _close :: Fn1 Client (Effect (Promise Unit))
+
+
+foreign import _collection :: Fn2 Db String (Effect Collection)
+foreign import _dropCollection :: Fn2 Db String (Effect (Promise Boolean))
+foreign import _dropDatabase :: Fn1 Db (Effect (Promise Boolean))
+foreign import databaseName :: Db -> String
+
+
+foreign import _createIndexes ::
+  Fn2 Collection (Array IndexDescription)
+    (Effect (Promise (Array IndexName)))
+
+
+foreign import _countDocuments ::
+  Fn3 Collection Filter (Nullable CountDocumentsOptions)
+    (Effect (Promise Int))
+
+
+foreign import _findOne ::
+  Fn3 Collection Filter (Nullable FindOptions)
+    (Effect (Promise (Nullable Document)))
+
+
+foreign import _insertOne ::
+  Fn3 Collection Document (Nullable InsertOneOptions)
+    (Effect (Promise InsertOneResult))
+
+
+foreign import _find ::
+  Fn3 Collection Filter (Nullable FindOptions)
+    (Effect FindCursor)
+
+
+foreign import _cursorNext ::
+  FindCursor -> Effect (Promise (Nullable Document))
+
+
+foreign import _cursorToArray ::
+  FindCursor -> Effect (Promise (Array Document))
+
+
+foreign import _replaceOne ::
+  Fn4 Collection Filter Document (Nullable ReplaceOptions)
+    (Effect (Promise UpdateResult))
+
+
+-- UTIL
+
+
+compose2 :: ∀ a b x y. (a -> b) -> (x -> y -> a) -> x -> y -> b
+compose2 f g x y = f (g x y)
+
+
+compose3 :: ∀ a b x y z. (a -> b) -> (x -> y -> z -> a) -> x -> y -> z -> b
+compose3 f g x y z = f (g x y z)
+
+
+infixr 9 compose2 as <<<<
+infixr 9 compose3 as <<<<<

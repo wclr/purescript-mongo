@@ -3,23 +3,24 @@ module Test.Main where
 
 import Prelude
 
-import Data.Argonaut.Core (Json)
-import Data.Argonaut.Decode (decodeJson)
 import Data.Argonaut.Encode (encodeJson)
-import Data.Either (Either(..))
-import Data.Maybe (Maybe(..))
-import Data.Newtype (over)
+import Data.Array as Array
+import Data.Either (isLeft, isRight)
+import Data.Maybe (Maybe(..), isJust, isNothing)
+import Data.Nullable (notNull, null, toMaybe)
+import Data.Tuple.Nested ((/\))
+import Debug (spy)
 import Effect (Effect)
-import Effect.Aff (Aff, launchAff_)
+import Effect.Aff (Aff, apathize, attempt, launchAff_)
 import Effect.Class (liftEffect)
-import Effect.Console (log)
-import MongoDb (ObjectId, ReplaceOneOptions(..), defaultReplaceOneOptions)
+import Foreign.Object as Object
+import MongoDb (dropDatabase)
 import MongoDb as Mongo
-import MongoDb.ObjectId as ObjectId
+import MongoDb.ObjectId (ObjectId)
 import MongoDb.Query (Query)
 import MongoDb.Query as Q
-import Test.Spec (before, beforeWith, before_, describe, describeOnly, it, itOnly, pending)
-import Test.Spec.Assertions (shouldEqual)
+import Test.Spec (SpecT, before, describe, it)
+import Test.Spec.Assertions (shouldEqual, shouldSatisfy)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpec)
 import Unsafe.Coerce (unsafeCoerce)
@@ -50,23 +51,190 @@ searchQuery = Q.or
   ]
 
 
--- colName :: String
--- colName = "item"
+type TestParams =
+  { client :: Mongo.Client
+  , db :: Mongo.Db
+  , col :: Mongo.Collection
+  , colName :: String
+  }
 
 
-cleanUpCollection :: ∀ a. Mongo.Collection a -> Aff Unit
-cleanUpCollection col =
-  Mongo.deleteMany Q.empty col
-    >>= \t -> pure unit
+isNull = isNothing <<< toMaybe
 
 
---
-type XWithId =
-  { x :: Int, _id :: ObjectId }
+tests :: forall m. Monad m => SpecT Aff TestParams m Unit
+tests | test <- it = do
+  it "createIndex unique" $ \{ col } -> do
+    let indexKey = Object.fromFoldable [ "x" /\ 1 ]
+    result <- Mongo.createIndexes col
+      [ { name: "my-index", unique: true, key: indexKey } ]
 
+    result `shouldEqual` [ "my-index" ]
 
-type X =
-  { x :: Int }
+    let doc = Mongo.fromJson (encodeJson { x: 1 })
+    _ <- Mongo.insertOne col doc
+    dupInsertResult <- attempt $ Mongo.insertOne col doc
+
+    isLeft dupInsertResult `shouldEqual` true
+
+  it "dropCollection should trow if collection doesn't exist" $ \{ db, colName } -> do
+    res <- attempt (Mongo.dropCollection db colName)
+
+    res `shouldSatisfy` isLeft
+
+  test "db and databaseName" \{ client } -> do
+    let dbName = "other_db_name"
+    db <- liftEffect $ Mongo.db client dbName
+
+    Mongo.databaseName db `shouldEqual` dbName
+    dbName `shouldEqual` dbName
+
+  test "dropDatabase" \{ db, col } -> do
+    let doc = Mongo.fromJson (encodeJson { x: 1 })
+    _ <- Mongo.insertOne col doc
+    dropRes <- dropDatabase db
+    count <- Mongo.countDocuments col Mongo.noFilter
+
+    dropRes `shouldEqual` true
+    count `shouldEqual` 0
+
+  it "insertOne" $ \{ col } -> do
+    let doc = Mongo.fromJson (encodeJson { x: 1 })
+    result <- Mongo.insertOne col doc
+
+    result.acknowledged `shouldEqual` true
+
+  it "insertOne with _id" $ \{ col } -> do
+    let _id = "my-id"
+    let doc = Mongo.fromJson (encodeJson { x: 1, _id })
+    result <- Mongo.insertOne col doc
+
+    result.acknowledged `shouldEqual` true
+    unsafeCoerce result.insertedId `shouldEqual` _id
+
+  it "insertOne duplicate" $ \{ col } -> do
+    let _id = "my-id"
+    let doc = Mongo.fromJson (encodeJson { x: 1, _id })
+    _ <- Mongo.insertOne col doc
+    res <- (attempt $ Mongo.insertOne col doc)
+
+    isLeft res `shouldEqual` true
+
+  it "findOne with noFilter/byId" $ \{ col } -> do
+    let _id = "my-id"
+    let doc = Mongo.fromJson (encodeJson { x: 1, _id })
+    _ <- Mongo.insertOne col doc
+
+    justFound <- Mongo.findOne col (Mongo.noFilter)
+    foundById <- Mongo.findOne col (Mongo.byId _id)
+
+    isJust justFound `shouldEqual` true
+    isJust foundById `shouldEqual` true
+
+  it "find with cursor to Array" $ \{ col } -> do
+    let _id1 = "id1"
+    let _id2 = "id2"
+    let doc1 = Mongo.fromJson (encodeJson { x: 1, _id: _id1 })
+    let doc2 = Mongo.fromJson (encodeJson { x: 1, _id: _id2 })
+    _ <- Mongo.insertOne col doc1
+    _ <- Mongo.insertOne col doc2
+
+    foundNoFilter <-
+      (liftEffect $ Mongo.find col (Mongo.noFilter))
+        >>= Mongo.cursorToArray
+    foundById <- (Mongo.findMany col (Mongo.byId _id1))
+
+    Array.length foundNoFilter `shouldEqual` 2
+    Array.length foundById `shouldEqual` 1
+    pure unit
+
+  it "find with cursor next" $ \{ col } -> do
+    let _id1 = "id1"
+    let _id2 = "id2"
+    let doc1 = Mongo.fromJson (encodeJson { x: 1, _id: _id1 })
+    let doc2 = Mongo.fromJson (encodeJson { x: 1, _id: _id2 })
+    _ <- Mongo.insertOne col doc1
+    _ <- Mongo.insertOne col doc2
+
+    cursor <-
+      (liftEffect $ Mongo.find col (Mongo.noFilter))
+    first <- Mongo.cursorNext cursor
+    second <- Mongo.cursorNext cursor
+    third <- Mongo.cursorNext cursor
+
+    isJust first `shouldEqual` true
+    isJust second `shouldEqual` true
+    isNothing third `shouldEqual` true
+
+  it "replaceOne existing" $ \{ col } -> do
+    let _id1 = "id1"
+    let _id2 = "id2"
+    let doc1 = Mongo.fromJson (encodeJson { x: 1, _id: _id1 })
+    let doc2 = Mongo.fromJson (encodeJson { x: 2, _id: _id1 })
+
+    _ <- Mongo.insertOne col doc1
+    r <- Mongo.replaceOne col (Mongo.byId _id1) doc2
+
+    r.acknowledged `shouldEqual` true
+    r.modifiedCount `shouldEqual` 1
+    r.matchedCount `shouldEqual` 1
+    r.upsertedCount `shouldEqual` 0
+    isNull r.upsertedId `shouldEqual` true
+
+  it "findMany with options" $ \{ col } -> do
+    let _id1 = "id1"
+    let _id2 = "id2"
+    let _id3 = "id3"
+    let _id4 = "id4"
+    let doc1 = Mongo.fromJson (encodeJson { y: 10, x: 1, _id: _id1 })
+    let doc2 = Mongo.fromJson (encodeJson { y: 20, x: 2, _id: _id2 })
+    let doc3 = Mongo.fromJson (encodeJson { y: 30, x: 3, _id: _id3 })
+    let doc4 = Mongo.fromJson (encodeJson { y: 30, x: 4, _id: _id4 })
+
+    _ <- Mongo.insertOne col doc1
+    _ <- Mongo.insertOne col doc3
+    _ <- Mongo.insertOne col doc4
+    _ <- Mongo.insertOne col doc2
+
+    found <- Mongo.findManyWithOptions col (Mongo.noFilter)
+      $ Mongo.defaultFindOptions
+          { limit = notNull 2
+          , skip = notNull 1
+          , sort = notNull $ Object.fromFoldable [ "x" /\ -1 ]
+          , projection =
+              notNull $ Object.fromFoldable [ "x" /\ 1 ]
+          }
+
+    Array.length found `shouldEqual` 2
+    Array.head (found <#> _.x <<< unsafeCoerce) `shouldEqual` (Just 3)
+    Array.last (found <#> _.x <<< unsafeCoerce) `shouldEqual` (Just 2)
+    pure unit
+
+  it "replaceOne not existing" $ \{ col } -> do
+    let _id1 = "id1"
+    let _id2 = "id2"
+    let doc2 = Mongo.fromJson (encodeJson { x: 2, _id: _id1 })
+
+    r <- (Mongo.replaceOne col (Mongo.byId _id1) doc2)
+
+    r.acknowledged `shouldEqual` true
+    r.modifiedCount `shouldEqual` 0
+    r.matchedCount `shouldEqual` 0
+    r.upsertedCount `shouldEqual` 0
+    isNull r.upsertedId `shouldEqual` true
+
+  it "replaceOne not existing with upsert" $ \{ col } -> do
+    let _id1 = "id1"
+    let doc2 = Mongo.fromJson (encodeJson { x: 2, _id: _id1 })
+
+    r <- Mongo.replaceOneWithOptions col (Mongo.byId _id1) doc2
+      (Mongo.defaultReplaceOptions { upsert = true })
+
+    r.acknowledged `shouldEqual` true
+    r.modifiedCount `shouldEqual` 0
+    r.matchedCount `shouldEqual` 0
+    r.upsertedCount `shouldEqual` 1
+    unsafeCoerce r.upsertedId `shouldEqual` _id1
 
 
 main :: Effect Unit
@@ -74,104 +242,15 @@ main = launchAff_ $ do
   runSpec [ consoleReporter ] do
     describe "MongoDb db/collection" do
       let dbName = "purs_mongodb_test_col"
-
+      let colName = "some"
       before
         ( do
             client <- Mongo.connect $ "mongodb://localhost/" <> dbName
-            let db = Mongo.defaultDb client
-            let colName = "some"
-            col <- Mongo.collection colName db
+
+            db <- liftEffect $ Mongo.defaultDb client
+            col <- liftEffect $ Mongo.collection db colName
+
+            apathize $ Mongo.dropCollection db colName
+
             pure { client, db, col, colName }
-
-        ) do
-          it "dropCollection" $ \{ col, colName, db } -> do
-            -- TODO: check just insertOne {} - when updating to next driver
-            _ <- Mongo.insertOne { x: 1 } col
-            _ <- Mongo.dropCollection colName db
-            count <- Mongo.countDocuments Q.empty col
-            count `shouldEqual` 0
-    -- it "dropCollection not existing" $ \{ col, colName, db } -> do
-    -- -- TODO: check just insertOne {} - when updating to next driver
-    --   _ <- Mongo.dropCollection colName db
-    --   _ <- Mongo.dropCollection colName db
-    --   pure unit
-
-    describe "operations" do
-      before
-        ( do
-            let colName = "some2"
-            client <- (Mongo.connect "mongodb://localhost/purs_mongodb_test")
-            let db = Mongo.defaultDb client
-            col <- Mongo.collection colName db
-            cleanUpCollection (col :: Mongo.Collection XWithId)
-            pure { col, db, colName }
-        )
-        do
-          it "insertOne/findOne" \{ col } -> do
-            id <- liftEffect $ ObjectId.generate
-            inserted <-
-              Mongo.insertOne
-                { x: 1, _id: id } col
-            itemOne <-
-              Mongo.findOne
-                (Q.by { _id: Q.eq id }) col
-            inserted `shouldEqual` ({ insertedId: id, success: true })
-            itemOne `shouldEqual` (Just { x: 1, _id: id })
-
-          it "replaceOne" \{ col } -> do
-            id <- liftEffect $ ObjectId.generate
-            inserted <-
-              Mongo.insertOne
-                { x: 1, _id: id } col
-            replaced <-
-              Mongo.replaceOne
-                Q.empty
-                { x: 2, _id: id }
-                col
-            itemOne <-
-              Mongo.findOne
-                (Q.by { _id: Q.eq id }) col
-            replaced `shouldEqual` ({ success: true })
-            itemOne `shouldEqual` (Just { x: 2, _id: id })
-
-          it "replaceOne (upsert)" \{ col } -> do
-            id <- liftEffect $ ObjectId.generate
-            replaced <-
-              Mongo.replaceOneWithOptions
-                (over ReplaceOneOptions (_ { upsert = true }) defaultReplaceOneOptions)
-                Q.empty
-                { x: 1, _id: id }
-                col
-            itemOne <-
-              Mongo.findOne
-                (Q.by { _id: Q.eq id }) col
-            replaced `shouldEqual` ({ success: true })
-            itemOne `shouldEqual` (Just { x: 1, _id: id })
-
-          it "insertMany/find" \{ db, colName } -> do
-            --let db = Mongo.defaultDb client
-            col <- Mongo.collection colName db
-            liftEffect $ log "inserting"
-            inserted <-
-              Mongo.insertMany
-                [ { x: 1 }, { x: 2 } ] col
-            -- foundItems <-
-            --   Mongo.find
-            --     (Q.empty) col
-            inserted `shouldEqual` ({ insertedCount: 2, success: true })
-          --foundItems `shouldEqual` ([ { x: 1 }, { x: 2 } ])
-
-          it "deleteMany" \{ db, colName } -> do
-            (col' :: Mongo.Collection Json) <- Mongo.collection colName db
-            --_ <- cleanUpCollection (col' :: Mongo.Collection Json)
-            id <- liftEffect $ ObjectId.generate
-            item <-
-              Mongo.insertOne
-                (encodeJson { x: 1, _id: id }) col'
-            itemOne <-
-              Mongo.findOne
-                ((unsafeCoerce $ { _id: id }))
-                --encodeJson { _id: id }
-                col'
-            --decoded <- pure $ decodeJson <$> itemOne
-            (decodeJson <$> itemOne) `shouldEqual` Just (Right { x: 1, _id: id })
+        ) do tests

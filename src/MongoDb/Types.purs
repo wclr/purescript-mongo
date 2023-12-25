@@ -9,12 +9,6 @@ import MongoDb.WriteConcern (WriteConcern)
 import MongoDb.ObjectId (ObjectId)
 
 
--- type MongoError =
---   { code :: Nullable Number
---   , errmsg :: Nullable String
---   }
-
-
 type InsertOneResult =
   { success :: Boolean
   , insertedId :: ObjectId

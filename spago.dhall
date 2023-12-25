@@ -6,6 +6,7 @@ You can edit this file as you like.
 , name = "mongo"
 , dependencies =
   [ "aff"
+  , "aff-promise"
   , "argonaut-codecs"
   , "argonaut-core"
   , "bifunctors"
@@ -18,6 +19,8 @@ You can edit this file as you like.
   , "foreign"
   , "foreign-object"
   , "functions"
+  , "js-promise"
+  , "js-promise-aff"
   , "maybe"
   , "nullable"
   , "prelude"
