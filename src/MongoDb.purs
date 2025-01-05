@@ -1,10 +1,13 @@
 module MongoDb
   ( Client
+  , ClientSession
   , Db
   , Collection
   , FindCursor
   , Document
   , InsertedId
+
+  , OperationOptions
 
   , FindOptions
   , defaultFindOptions
@@ -13,6 +16,7 @@ module MongoDb
   , defaultReplaceOptions
 
   , Filter
+
   , noFilter
   , byId
 
@@ -28,28 +32,27 @@ module MongoDb
   , databaseName
 
   , countDocuments
-
-  , unsafeToJson
-  , fromJson
+  , countDocumentsWith
 
   , find
-  , findWithOptions
+  , findWith
 
   , cursorToArray
   , cursorNext
 
   , findOne
-  , findOneWithOptions
+  , findOneWith
 
   , findMany
-  , findManyWithOptions
-  -- , findOneWithOptions
+  , findManyWith
   , insertOne
-  -- , insertOneWithOptions
-  --, updateOne
-  -- , updateOneWithOptions
+  , insertOneWith
+
+  , insertMany
+  , insertManyWith
+
   , replaceOne
-  , replaceOneWithOptions
+  , replaceOneWith
 
   -- , updateMany
   -- , updateManyWithOptions
@@ -59,6 +62,11 @@ module MongoDb
   -- , deleteOne
   -- , deleteMany
   -- , deleteManyWithOptions
+
+  , startSession
+  , endSession
+  , withTransaction
+
   , module Reexport
   ) where
 
@@ -67,14 +75,15 @@ import Prelude
 
 import Data.Argonaut.Core (Json)
 import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn4, runFn1, runFn2, runFn3, runFn4)
-import Data.Maybe (Maybe)
-import Data.Nullable (Nullable, notNull, null, toMaybe)
+import Data.Maybe (Maybe(..))
+import Data.Nullable (Nullable, notNull, null, toMaybe, toNullable)
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
 import Foreign.Object (Object)
+import Heterogeneous.Mapping (class Mapping, hmap)
 import MongoDb.ObjectId (ObjectId) as Reexport
-import Promise.Aff (Promise, toAffE)
+import Promise.Aff (Promise, fromAff, toAffE)
 import Unsafe.Coerce (unsafeCoerce)
 
 
@@ -82,6 +91,7 @@ foreign import data Client :: Type
 foreign import data Db :: Type
 foreign import data Collection :: Type
 foreign import data FindCursor :: Type
+foreign import data ClientSession :: Type
 
 
 -- | Document is type containing JS representation of MongoDb object content.
@@ -111,41 +121,128 @@ type IndexDescription =
   }
 
 
-type ReplaceOptions = { upsert :: Boolean }
+type ClientSessionOptions = {}
+type EndSessionOptions = {}
+type TransactionOptions = {}
 
 
-type CountDocumentsOptions = {}
+data ToNullable = ToNullable
 
---newtype SortOrder = SortOrder Int
 
--- asc :: String -> SortOrder
--- asc field = [ field,  1 ]
+instance Mapping ToNullable (Maybe n) (Nullable n) where
+  mapping ToNullable = toNullable
 
--- desc :: String -> SortOrder
--- desc field = [ field, 0 ]
+
+else instance Mapping ToNullable n n where
+  mapping ToNullable = identity
+
+
+type OperationOptions = (session :: Maybe ClientSession)
+
+
+type OperationOptions_ = (session :: Nullable ClientSession)
+--
 
 
 type FindOptions =
-  { limit :: Nullable Int
-  , skip :: Nullable Int
-  -- | 1 means lower will be the first in result, -1 means opposite
-  , sort :: Nullable (Object Int)
-  , projection :: Nullable (Object Int)
+  { limit :: Maybe Int
+  , skip :: Maybe Int
+  , sort :: Maybe (Object Int)
+  , projection :: Maybe (Object Int)
+  | OperationOptions
   }
 
 
 defaultFindOptions :: FindOptions
 defaultFindOptions =
-  { limit: null
-  , skip: null
-  , sort: null
-  , projection: null
+  { limit: Nothing
+  , skip: Nothing
+  , sort: Nothing
+  , projection: Nothing
+  , session: Nothing
   }
+
+
+type FindOptions_ =
+  { limit :: Nullable Int
+  , skip :: Nullable Int
+  , sort :: Nullable (Object Int)
+  , projection :: Nullable (Object Int)
+  | OperationOptions_
+  }
+
+
+toFindOptions_ :: FindOptions -> FindOptions_
+toFindOptions_ = hmap ToNullable
+
+
+--
+
+
+type ReplaceOptions =
+  { upsert :: Boolean
+  | OperationOptions
+  }
+
+
+defaultReplaceOptions :: ReplaceOptions
+defaultReplaceOptions =
+  { upsert: false
+  , session: Nothing
+  }
+
+
+type ReplaceOptions_ =
+  { upsert :: Boolean
+  | OperationOptions_
+  }
+
+
+toReplaceOptions_ :: ReplaceOptions -> ReplaceOptions_
+toReplaceOptions_ = hmap ToNullable
+
+
+--
 
 
 type InsertOneOptions =
-  {
+  { | OperationOptions
   }
+
+
+type InsertOneOptions_ =
+  { | OperationOptions_
+  }
+
+
+defaultInsertOneOptions :: InsertOneOptions
+defaultInsertOneOptions =
+  { session: Nothing
+  }
+
+
+type InsertManyOptions =
+  { | OperationOptions
+  }
+
+
+defaultInsertManyOptions :: InsertManyOptions
+defaultInsertManyOptions =
+  { session: Nothing
+  }
+
+
+type InsertManyOptions_ =
+  { | OperationOptions_
+  }
+
+
+toInsertOneOptions_ :: InsertOneOptions -> InsertOneOptions_
+toInsertOneOptions_ = hmap ToNullable
+
+
+toBulkWriteOptions_ :: InsertManyOptions -> InsertManyOptions_
+toBulkWriteOptions_ = hmap ToNullable
 
 
 -- We actually don't know type of insertedId
@@ -158,6 +255,13 @@ type InsertOneResult =
   }
 
 
+type InsertManyResult =
+  { acknowledged :: Boolean
+  , insertedCount :: Int
+  , insertedIds :: Object InsertedId
+  }
+
+
 type UpdateResult =
   { acknowledged :: Boolean
   , matchedCount :: Int
@@ -167,21 +271,7 @@ type UpdateResult =
   }
 
 
-defaultReplaceOptions :: ReplaceOptions
-defaultReplaceOptions =
-  { upsert: false
-  }
-
-
--- Move to separate module.
-unsafeToJson :: Document -> Json
-unsafeToJson =
-  unsafeCoerce
-
-
-fromJson :: Json -> Document
-fromJson =
-  unsafeCoerce
+type With a = a -> a
 
 
 -- CLIENT METHODS
@@ -235,18 +325,43 @@ createIndexes =
   toAffE <<<< runFn2 _createIndexes
 
 
+type CountDocumentsOptions =
+  { skip :: Maybe Int
+  , limit :: Maybe Int
+  }
+
+
+type CountDocumentsOptions_ =
+  { skip :: Nullable Int
+  , limit :: Nullable Int
+  }
+
+
+defaultCountDocumentsOptions :: CountDocumentsOptions
+defaultCountDocumentsOptions =
+  { skip: Nothing
+  , limit: Nothing
+  }
+
+
+toCountDocumentsOptions_ :: CountDocumentsOptions -> CountDocumentsOptions_
+toCountDocumentsOptions_ = hmap ToNullable
+
+
 countDocuments :: Collection -> Filter -> Aff Int
 countDocuments col filter =
   toAffE $ runFn3 _countDocuments col filter null
 
 
+countDocumentsWith :: With CountDocumentsOptions -> Collection -> Filter -> Aff Int
+countDocumentsWith with col filter =
+  toAffE $ runFn3 _countDocuments col filter
+    $ notNull $ toCountDocumentsOptions_ $ with defaultCountDocumentsOptions
+
+
 findOne :: Collection -> Filter -> Aff (Maybe Document)
 findOne col filter =
   map toMaybe <$> toAffE $ (runFn3 _findOne col filter null)
-
-findOneWithOptions :: Collection -> Filter -> FindOptions -> Aff (Maybe Document)
-findOneWithOptions col filter options =
-  map toMaybe <$> toAffE $ (runFn3 _findOne col filter (notNull options))
 
 
 insertOne :: Collection -> Document -> Aff InsertOneResult
@@ -254,14 +369,40 @@ insertOne col doc =
   toAffE $ (runFn3 _insertOne col doc null)
 
 
+insertOneWith :: With InsertOneOptions -> Collection -> Document -> Aff InsertOneResult
+insertOneWith with col doc =
+  toAffE $ runFn3 _insertOne col doc
+    $ notNull $ toInsertOneOptions_ $ with defaultInsertOneOptions
+
+
+insertMany :: Collection -> Array Document -> Aff InsertManyResult
+insertMany col docs =
+  toAffE $ (runFn3 _insertMany col docs null)
+
+
+insertManyWith ::
+  With InsertManyOptions -> Collection -> Array Document -> Aff InsertManyResult
+insertManyWith with col docs =
+  toAffE $ runFn3 _insertMany col docs
+    $ notNull $ toBulkWriteOptions_ $ with defaultInsertManyOptions
+
+
 find :: Collection -> Filter -> Effect FindCursor
 find col filter =
   runFn3 _find col filter null
 
 
-findWithOptions :: Collection -> Filter -> FindOptions -> Effect FindCursor
-findWithOptions col filter options =
-  runFn3 _find col filter (notNull options)
+findWith :: With FindOptions -> Collection -> Filter -> Effect FindCursor
+findWith options col filter =
+  runFn3 _find col filter
+    (notNull $ toFindOptions_ $ options defaultFindOptions)
+
+
+findOneWith :: With FindOptions -> Collection -> Filter -> Aff (Maybe Document)
+findOneWith with col filter =
+  map toMaybe <$> toAffE $
+    runFn3 _findOne col filter
+      (notNull $ toFindOptions_ $ with defaultFindOptions)
 
 
 findMany :: Collection -> Filter -> Aff (Array Document)
@@ -269,9 +410,9 @@ findMany col filter =
   liftEffect (find col filter) >>= cursorToArray
 
 
-findManyWithOptions :: Collection -> Filter -> FindOptions -> Aff (Array Document)
-findManyWithOptions col filter options =
-  liftEffect (findWithOptions col filter options) >>= cursorToArray
+findManyWith :: With FindOptions -> Collection -> Filter -> Aff (Array Document)
+findManyWith options col filter =
+  liftEffect (findWith options col filter) >>= cursorToArray
 
 
 cursorToArray :: FindCursor -> Aff (Array Document)
@@ -289,10 +430,28 @@ replaceOne col filter replacement =
   toAffE $ (runFn4 _replaceOne col filter replacement null)
 
 
-replaceOneWithOptions ::
-  Collection -> Filter -> Document -> ReplaceOptions -> Aff UpdateResult
-replaceOneWithOptions col filter replacement options =
-  toAffE $ (runFn4 _replaceOne col filter replacement (notNull options))
+replaceOneWith ::
+  With ReplaceOptions -> Collection -> Filter -> Document -> Aff UpdateResult
+replaceOneWith with col filter replacement =
+  toAffE $
+    runFn4 _replaceOne col filter replacement
+      (notNull $ toReplaceOptions_ $ with defaultReplaceOptions)
+
+
+startSession :: Client -> Aff ClientSession
+startSession client =
+  liftEffect $ runFn2 _startSession client null
+
+
+endSession :: ClientSession -> Aff Unit
+endSession session =
+  liftEffect $ runFn2 _endSession session null
+
+
+withTransaction :: ClientSession -> Aff Unit -> Aff Unit
+withTransaction session action =
+  toAffE $
+    runFn3 _withTransaction session (fromAff action) null
 
 
 -- -- FOREIGN
@@ -310,28 +469,31 @@ foreign import _dropDatabase :: Fn1 Db (Effect (Promise Boolean))
 foreign import databaseName :: Db -> String
 
 
+foreign import _startSession ::
+  Fn2 Client (Nullable ClientSessionOptions) (Effect ClientSession)
+
+
+foreign import _endSession ::
+  Fn2 ClientSession (Nullable EndSessionOptions) (Effect Unit)
+
+
+foreign import _withTransaction ::
+  Fn3 ClientSession
+    (Effect (Promise Unit)) (Nullable TransactionOptions) (Effect (Promise Unit))
+
+
 foreign import _createIndexes ::
   Fn2 Collection (Array IndexDescription)
     (Effect (Promise (Array IndexName)))
 
 
 foreign import _countDocuments ::
-  Fn3 Collection Filter (Nullable CountDocumentsOptions)
+  Fn3 Collection Filter (Nullable CountDocumentsOptions_)
     (Effect (Promise Int))
 
 
-foreign import _findOne ::
-  Fn3 Collection Filter (Nullable FindOptions)
-    (Effect (Promise (Nullable Document)))
-
-
-foreign import _insertOne ::
-  Fn3 Collection Document (Nullable InsertOneOptions)
-    (Effect (Promise InsertOneResult))
-
-
 foreign import _find ::
-  Fn3 Collection Filter (Nullable FindOptions)
+  Fn3 Collection Filter (Nullable FindOptions_)
     (Effect FindCursor)
 
 
@@ -343,8 +505,23 @@ foreign import _cursorToArray ::
   FindCursor -> Effect (Promise (Array Document))
 
 
+foreign import _findOne ::
+  Fn3 Collection Filter (Nullable FindOptions_)
+    (Effect (Promise (Nullable Document)))
+
+
+foreign import _insertOne ::
+  Fn3 Collection Document (Nullable InsertOneOptions_)
+    (Effect (Promise InsertOneResult))
+
+
+foreign import _insertMany ::
+  Fn3 Collection (Array Document) (Nullable InsertManyOptions_)
+    (Effect (Promise InsertManyResult))
+
+
 foreign import _replaceOne ::
-  Fn4 Collection Filter Document (Nullable ReplaceOptions)
+  Fn4 Collection Filter Document (Nullable ReplaceOptions_)
     (Effect (Promise UpdateResult))
 
 
@@ -355,9 +532,4 @@ compose2 :: ∀ a b x y. (a -> b) -> (x -> y -> a) -> x -> y -> b
 compose2 f g x y = f (g x y)
 
 
-compose3 :: ∀ a b x y z. (a -> b) -> (x -> y -> z -> a) -> x -> y -> z -> b
-compose3 f g x y z = f (g x y z)
-
-
 infixr 9 compose2 as <<<<
-infixr 9 compose3 as <<<<<

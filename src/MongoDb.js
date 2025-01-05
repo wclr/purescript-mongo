@@ -3,7 +3,28 @@ import mongodb from "mongodb"
 /**
  * @template T
  * @typedef {() => T} Effect<T>
+ *
  */
+
+/**
+ * * @typedef {mongodb.Filter<any>} Filter
+ */
+
+/**
+ *  @typedef {Object} CommonOptions
+ *  @property {mongodb.ClientSession | null} session
+ */
+
+/**
+ *
+ * @param {CommonOptions} opts
+ * @returns
+ */
+const getCommonOpts = opts => {
+  return {
+    session: opts.session || undefined,
+  }
+}
 
 /**
  * @param {String} uri
@@ -32,6 +53,27 @@ export const _db = (client, dbName) => {
 
 /**
  * @param {mongodb.MongoClient} client
+ * @param {null} options
+ * @returns {Effect<mongodb.ClientSession>}
+ */
+export const _startSession = (client, options) => {
+  const options_ = options ? {} : undefined
+
+  return () => client.startSession(options_)
+}
+
+/**
+ * @param {mongodb.ClientSession} session
+ * @param {null} options
+ * @returns {Effect<Promise<void>>}
+ */
+export const _endSession = (session, options) => {
+  const options_ = options ? {} : undefined
+  return () => session.endSession(options_)
+}
+
+/**
+ * @param {mongodb.MongoClient} client
  * @returns {Effect<Promise<void>>}
  */
 export const _close = function _close(client) {
@@ -40,6 +82,7 @@ export const _close = function _close(client) {
 
 /**
  * @param {mongodb.Db} db
+ * @param {string} name
  * @returns {Effect<mongodb.Collection>}
  */
 export const _collection = (db, name) => {
@@ -48,7 +91,7 @@ export const _collection = (db, name) => {
 
 /**
  * @param {mongodb.Db} db
- * @param {string} db
+ * @param {string} name
  * @returns {Effect<Promise<boolean>>}
  */
 export const _dropCollection = (db, name) => {
@@ -81,46 +124,71 @@ export const _createIndexes = (collection, indexSpecs) => {
 }
 
 /**
- * @typedef {Object} CountDocumentOptions
- *
+ * @typedef {Object} CountDocumentsOptions
+ * @property {number | null} limit
+ * @property {number | null} skip
  */
 
 /**
  * @param {mongodb.Collection} collection
  * @param {mongodb.Filter<any>} filter
- * @param {CountDocumentOptions | null} options
+ * @param {CountDocumentsOptions | null} options
  * @returns {Effect<Promise<number>>}
  */
 export const _countDocuments = (collection, filter, options) => {
-  return () => collection.countDocuments(filter, options)
+  const options_ = options
+    ? {
+        limit: options.limit || undefined,
+        skip: options.skip || undefined,
+      }
+    : undefined
+  return () => collection.countDocuments(filter, options_)
 }
 
 /**
  * @typedef {Object} FindOptions
  * @property {number | null} limit
  * @property {number | null} skip
- * @property {Object | null} sort
+ * @property {{[k: string]: 1 | -1} | null} sort
  * @property {Object | null} projection
  */
 
 /**
  * @param {mongodb.Collection} collection
  * @param {mongodb.Filter<any>} filter
- * @param {FindOptions | null} options
- * @returns {Effect<Promise<mongodb.Document>>}
+ * @param {FindOptions & CommonOptions | null} options
+ * @returns {Effect<Promise<mongodb.Document | null>>}
  */
 export const _findOne = (collection, filter, options) => {
-  return () => collection.findOne(filter, options)
+  const options_ = options
+    ? {
+        limit: options.limit || undefined,
+        skip: options.skip || undefined,
+        sort: options.sort || undefined,
+        projection: options.projection || undefined,
+        ...getCommonOpts(options),
+      }
+    : undefined
+  return () => collection.findOne(filter, options_)
 }
 
 /**
  * @param {mongodb.Collection} collection
- * @param {mongodb.Filter<any> | null} filter
- * @param {FindOptions | null} options
+ * @param {mongodb.Filter<any>} filter
+ * @param {FindOptions & CommonOptions | null} options
  * @returns {Effect<mongodb.FindCursor>}
  */
 export const _find = (collection, filter, options) => {
-  return () => collection.find(filter, options)
+  const options_ = options
+    ? {
+        limit: options.limit || undefined,
+        skip: options.skip || undefined,
+        sort: options.sort || undefined,
+        projection: options.projection || undefined,
+        ...getCommonOpts(options),
+      }
+    : undefined
+  return () => collection.find(filter, options_)
 }
 
 /**
@@ -140,7 +208,7 @@ export const _cursorNext = cursor => {
 }
 
 /**
- * @typedef {Object} InsertOneOptions
+ * @typedef {CommonOptions} InsertOneOptions
  * 
  * 
  * @typedef {Object} InsertOneResult
@@ -155,12 +223,23 @@ export const _cursorNext = cursor => {
  * @returns {Effect<Promise<InsertOneResult>>}
  */
 export const _insertOne = (collection, doc, options) => {
-  return () => collection.insertOne(doc, options)
+  const options_ = options ? getCommonOpts(options) : undefined
+  return () => collection.insertOne(doc, options_)
 }
 
 /**
+ * @param {mongodb.Collection} collection
+ * @param {mongodb.Document[]} docs
+ * @param {CommonOptions | null} options
+ * @returns {Effect<Promise<mongodb.InsertManyResult>>}
+ */
+export const _insertMany = (collection, docs, options) => {
+  const _options = options ? getCommonOpts(options) : undefined
+  return () => collection.insertMany(docs, _options)
+}
+/**
  * @typedef {Object} ReplaceOptions
- * @property {boolean} upsert
+ * @property {boolean | null } upsert
  */
 
 /**
@@ -175,12 +254,79 @@ export const _insertOne = (collection, doc, options) => {
 
 /**
  * @param {mongodb.Collection} collection
- * @param {mongodb.Filter<Document>} doc
+ * @param {Filter} filter
  * @param {mongodb.Document} doc
- * @param {ReplaceOptions | null} options
+ * @param {ReplaceOptions & CommonOptions | null} options
  * This is probably a mistake in typings that it may return Document
  * @returns {Effect<Promise<mongodb.UpdateResult | mongodb.Document>>}
  */
 export const _replaceOne = (collection, filter, doc, options) => {
-  return () => collection.replaceOne(filter, doc, options)
+  const options_ = options
+    ? {
+        upsert: options.upsert || undefined,
+        ...getCommonOpts(options),
+      }
+    : undefined
+  return () => collection.replaceOne(filter, doc, options_)
+}
+
+/**
+ * @typedef {Object} DeleteOptions
+ *
+ */
+
+/**
+ * @typedef {Object} DeleteResult
+ * @property {boolean} acknowledged
+ * @property {number} deletedCount
+ */
+
+/**
+ * @param {mongodb.Collection} collection
+ * @param {Filter} filter
+ * @param {DeleteOptions & CommonOptions | null} options
+ * This is probably a mistake in typings that it may return Document
+ * @returns {Effect<Promise<DeleteResult>>}
+ */
+export const _deleteOne = (collection, filter, options) => {
+  const options_ = options
+    ? {
+        ...getCommonOpts(options),
+      }
+    : undefined
+  return () => collection.deleteOne(filter, options_)
+}
+
+/**
+ * @param {mongodb.Collection} collection
+ * @param {Filter} filter
+ * @param {DeleteOptions & CommonOptions | null} options
+ * This is probably a mistake in typings that it may return Document
+ * @returns {Effect<Promise<DeleteResult>>}
+ */
+export const _deleteMany = (collection, filter, options) => {
+  const options_ = options
+    ? {
+        ...getCommonOpts(options),
+      }
+    : undefined
+  return () => collection.deleteMany(filter, options_)
+}
+
+/**
+ *
+ * @param {mongodb.ClientSession} session
+ * @param {Effect <Promise<void>>} action
+ * @param {null} options
+ * @returns {Effect<Promise<void>>}
+ */
+export const _withTransaction = (session, action, options) => {
+  return () => {
+    const options_ = options ? {} : undefined
+
+    session.commitTransaction
+    return session.withTransaction(() => {
+      return action()
+    }, options_)
+  }
 }
