@@ -271,6 +271,47 @@ export const _replaceOne = (collection, filter, doc, options) => {
 }
 
 /**
+ * @typedef {Object} UpdateFilter
+ */
+
+/**
+ * @typedef {Object} UpdateOptions
+ * @property {boolean | null } upsert
+ */
+
+/**
+ * @param {mongodb.Collection} collection
+ * @param {Filter} filter
+ * @param {UpdateFilter } update
+ * @param {UpdateOptions & CommonOptions | null} options
+ * @returns {Effect<Promise<UpdateResult> | mongodb.Document>}
+ */
+export const _updateOne = (collection, filter, update, options) => {
+  const options_ = options
+    ? {
+        ...getCommonOpts(options),
+      }
+    : undefined
+  return () => collection.updateOne(filter, update, options_)
+}
+
+/**
+ * @param {mongodb.Collection} collection
+ * @param {Filter} filter
+ * @param {UpdateFilter } update
+ * @param {DeleteOptions & CommonOptions | null} options
+ * @returns {Effect<Promise<UpdateResult> | mongodb.Document>}
+ */
+export const _updateMany = (collection, filter, update, options) => {
+  const options_ = options
+    ? {
+        ...getCommonOpts(options),
+      }
+    : undefined
+  return () => collection.updateMany(filter, update, options_)
+}
+
+/**
  * @typedef {Object} DeleteOptions
  *
  */
@@ -285,7 +326,6 @@ export const _replaceOne = (collection, filter, doc, options) => {
  * @param {mongodb.Collection} collection
  * @param {Filter} filter
  * @param {DeleteOptions & CommonOptions | null} options
- * This is probably a mistake in typings that it may return Document
  * @returns {Effect<Promise<DeleteResult>>}
  */
 export const _deleteOne = (collection, filter, options) => {
@@ -301,7 +341,6 @@ export const _deleteOne = (collection, filter, options) => {
  * @param {mongodb.Collection} collection
  * @param {Filter} filter
  * @param {DeleteOptions & CommonOptions | null} options
- * This is probably a mistake in typings that it may return Document
  * @returns {Effect<Promise<DeleteResult>>}
  */
 export const _deleteMany = (collection, filter, options) => {
@@ -324,7 +363,6 @@ export const _withTransaction = (session, action, options) => {
   return () => {
     const options_ = options ? {} : undefined
 
-    session.commitTransaction
     return session.withTransaction(() => {
       return action()
     }, options_)

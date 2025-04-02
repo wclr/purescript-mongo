@@ -3,7 +3,7 @@ Welcome to a Spago project!
 You can edit this file as you like.
 -}
 { sources = [ "src/**/*.purs", "test/**/*.purs" ]
-, name = "mongo"
+, name = "mongodb"
 , dependencies =
   [ "aff"
   , "aff-promise"
@@ -13,12 +13,14 @@ You can edit this file as you like.
   , "console"
   , "control"
   , "datetime"
+  , "debug"
   , "effect"
   , "either"
   , "exceptions"
   , "foreign"
   , "foreign-object"
   , "functions"
+  , "heterogeneous"
   , "js-promise"
   , "js-promise-aff"
   , "maybe"

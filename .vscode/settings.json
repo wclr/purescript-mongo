@@ -8,6 +8,8 @@
   "purescript.buildOpenedFiles": true,
   "purescript.fullBuildOnSave": true,
   "purescript.diagnosticsOnType": true,  
-  
-  "purescript.censorWarnings": []
+  "purescript.useRebuild2": true,  
+  "purescript.censorWarnings": [],
+  "clearLogFileOnStart": true,
+  "purescript.logFile": "purs-ls.log"
 }

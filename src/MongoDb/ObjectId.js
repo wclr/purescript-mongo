@@ -1,3 +1,5 @@
+// @ts-check
+
 import { ObjectId } from "mongodb"
 
 /**
@@ -23,7 +25,7 @@ export const generate = () => {
   return new ObjectId()
 }
 
-//@ts
+//@ts-ignore
 export const fromString_ = left => right => s => {
   try {
     return right(ObjectId.createFromHexString(s))

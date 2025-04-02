@@ -5,7 +5,7 @@ import mongodb from "mongodb"
  * @param {mongodb.Document} doc
  */
 export const serialize = doc => {
-  mongodb.BSON.EJSON.serialize(doc)
+  return mongodb.BSON.EJSON.serialize(doc)
 }
 
 /**

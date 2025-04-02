@@ -1,6 +1,5 @@
 module Test.Main where
 
-
 import Prelude
 
 import Control.Alt ((<|>))
@@ -24,23 +23,9 @@ import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpec)
 import Unsafe.Coerce (unsafeCoerce)
 
-
--- data IntOrBoolean
---   = Int Int
---   | Boolean Boolean
-
-
--- instance readForeign :: ReadForeign IntOrBoolean where
---   readImpl f =
---     Int <$> Foreign.readInt f
---     <|> Boolean <$> Foreign.readBoolean f
-
-
 type Inner = { number :: Number, text :: String }
 
-
 type Item = { id :: Int, name :: String, inner :: Inner }
-
 
 searchQuery :: Query Item
 searchQuery = Q.or
@@ -49,7 +34,6 @@ searchQuery = Q.or
   , Q.by { inner: { text: Q.lte "10.0" } }
   ]
 
-
 type TestParams =
   { client :: Mongo.Client
   , db :: Mongo.Db
@@ -57,26 +41,27 @@ type TestParams =
   , colName :: String
   }
 
-
 isNull :: forall a. Nullable a -> Boolean
 isNull = isNothing <<< toMaybe
 
-
-fit :: forall m t arg g. FocusWarning => Monad m => Example t arg g => String -> t -> SpecT g arg m Unit
+fit ::
+  forall m t arg g.
+  FocusWarning =>
+  Monad m =>
+  Example t arg g =>
+  String ->
+  t ->
+  SpecT g arg m Unit
 fit = itOnly
-
 
 xit :: forall t17 m18 g19 i20. Monad m18 => String -> t17 -> SpecT g19 i20 m18 Unit
 xit name _ = pending name
 
-
 makeDoc :: forall a. EncodeJson a => a -> Mongo.Document
 makeDoc obj = unsafeCoerce (encodeJson obj)
 
-
 filterBy :: ∀ r. Record r -> Mongo.Filter
 filterBy rec = unsafeCoerce rec
-
 
 tests :: forall m. Monad m => SpecT Aff TestParams m Unit
 tests = do
@@ -93,11 +78,12 @@ tests = do
 
     isLeft dupInsertResult `shouldEqual` true
 
-  it "dropCollection doesn't trows if collection doesn't exist" $ \{ db, colName, col } -> do
-    res <- attempt (Mongo.dropCollection db colName)
-    --let (res :: Either Unit Boolean) = Right true
+  it "dropCollection doesn't trows if collection doesn't exist" $
+    \{ db, colName, col } -> do
+      res <- attempt (Mongo.dropCollection db colName)
+      --let (res :: Either Unit Boolean) = Right true
 
-    res `shouldSatisfy` isRight
+      res `shouldSatisfy` isRight
 
   it "databaseName returns db name" \{ client } -> do
     let dbName = "other_db_name"
@@ -137,6 +123,13 @@ tests = do
 
     isLeft res `shouldEqual` true
 
+  fit "insertMany" $ \{ col } -> do
+    let docs = [ makeDoc { x: 1 }, makeDoc { x: 2 } ]
+    result <- Mongo.insertMany col docs
+
+    (isJust $ Object.lookup "0" result.insertedIds) `shouldSatisfy` eq true
+    (isJust $ Object.lookup "1" result.insertedIds) `shouldSatisfy` eq true
+
   it "findOne with noFilter/byId" $ \{ col } -> do
     let _id = "my-id"
     let doc = makeDoc { x: 1, _id }
@@ -171,7 +164,7 @@ tests = do
     let doc1 = makeDoc { x: 1, _id: _id1 }
     let doc2 = makeDoc { x: 1, _id: _id2 }
 
-    _ <- Mongo.insertMany col [doc1, doc2]
+    _ <- Mongo.insertMany col [ doc1, doc2 ]
 
     cursor <-
       (liftEffect $ Mongo.find col (Mongo.noFilter))
@@ -253,6 +246,31 @@ tests = do
     r.upsertedCount `shouldEqual` 1
     unsafeCoerce r.upsertedId `shouldEqual` _id1
 
+  it "deleteOne" $ \{ col } -> do
+    let doc = makeDoc { x: 1 }
+    { insertedId } <- Mongo.insertOne col doc
+    result <- Mongo.deleteOne col (Mongo.byId insertedId)
+    found <- Mongo.findOne col (Mongo.byId insertedId)
+
+    result.acknowledged `shouldEqual` true
+    result.deletedCount `shouldEqual` 1
+    (found <#> const unit) `shouldEqual` Nothing
+
+  it "deleteMany" $ \{ col } -> do
+
+    let doc1 = makeDoc { x: 1 }
+    let doc2 = makeDoc { x: 1 }
+    let doc3 = makeDoc { x: 2 }
+
+    _ <- Mongo.insertMany col [ doc1, doc2, doc3 ]
+
+    result <- Mongo.deleteMany col (unsafeCoerce { x: 1 })
+    found <- Mongo.findMany col (Mongo.noFilter)
+
+    result.acknowledged `shouldEqual` true
+    result.deletedCount `shouldEqual` 2
+    (Array.length found) `shouldEqual` 1
+
   it "updates db with transaction" \{ client, col, db } -> do
     session <- Mongo.startSession client
     let insert = Mongo.insertOneWith _ { session = Just session } col
@@ -290,7 +308,6 @@ tests = do
 
     pure unit
 
-
 main :: Effect Unit
 main = launchAff_ $ do
   runSpec [ consoleReporter ] do
@@ -307,4 +324,5 @@ main = launchAff_ $ do
             apathize $ Mongo.dropCollection db colName
 
             pure { client, db, col, colName }
-        ) do tests
+        )
+        do tests
