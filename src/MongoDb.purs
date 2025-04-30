@@ -85,6 +85,7 @@ import Foreign.Object (Object)
 import Heterogeneous.Mapping (class Mapping, hmap)
 import MongoDb.ObjectId (ObjectId) as Reexport
 import Promise.Aff (Promise, fromAff, toAffE)
+import Promise as Promise
 import Unsafe.Coerce (unsafeCoerce)
 
 foreign import data Client :: Type
@@ -430,7 +431,7 @@ endSession :: ClientSession -> Aff Unit
 endSession session =
   liftEffect $ runFn2 _endSession session null
 
-withTransaction :: ClientSession -> Aff Unit -> Aff Unit
+withTransaction :: ∀ a. Promise.Flatten a a => ClientSession -> Aff a -> Aff a
 withTransaction session action =
   toAffE $
     runFn3 _withTransaction session (fromAff action) null
@@ -453,11 +454,11 @@ foreign import _startSession ::
 foreign import _endSession ::
   Fn2 ClientSession (Nullable EndSessionOptions) (Effect Unit)
 
-foreign import _withTransaction ::
+foreign import _withTransaction :: ∀ a.
   Fn3 ClientSession
-    (Effect (Promise Unit))
+    (Effect (Promise a))
     (Nullable TransactionOptions)
-    (Effect (Promise Unit))
+    (Effect (Promise a))
 
 foreign import _createIndexes ::
   Fn2 Collection (Array IndexDescription)

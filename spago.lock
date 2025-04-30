@@ -10,6 +10,7 @@
             "argonaut-codecs",
             "argonaut-core",
             "bifunctors",
+            "codec-argonaut",
             "console",
             "control",
             "datetime",
@@ -24,7 +25,6 @@
             "js-promise",
             "js-promise-aff",
             "json",
-            "json-codecs",
             "maybe",
             "nullable",
             "prelude",
@@ -44,6 +44,8 @@
             "avar",
             "bifunctors",
             "catenable-lists",
+            "codec",
+            "codec-argonaut",
             "console",
             "const",
             "contravariant",
@@ -71,9 +73,7 @@
             "js-promise",
             "js-promise-aff",
             "json",
-            "json-codecs",
             "lazy",
-            "lcg",
             "lists",
             "maybe",
             "mmorph",
@@ -89,9 +89,6 @@
             "pipes",
             "prelude",
             "profunctor",
-            "quickcheck",
-            "quickcheck-laws",
-            "random",
             "record",
             "refs",
             "safe-coerce",
@@ -100,7 +97,6 @@
             "st",
             "strings",
             "tailrec",
-            "these",
             "transformers",
             "tuples",
             "type-equality",
@@ -7955,6 +7951,28 @@
         "unfoldable"
       ]
     },
+    "codec": {
+      "type": "git",
+      "url": "https://github.com/garyb/purescript-codec.git",
+      "rev": "3e2f014fc6f44e65c8e189259b6d123d40994bf2",
+      "dependencies": [
+        "bifunctors",
+        "profunctor"
+      ]
+    },
+    "codec-argonaut": {
+      "type": "git",
+      "url": "https://github.com/garyb/purescript-codec-argonaut.git",
+      "rev": "d6c26da5638f19eded1e269117e7ddd7e0b78fd8",
+      "dependencies": [
+        "argonaut-core",
+        "codec",
+        "foreign-object",
+        "ordered-collections",
+        "type-equality",
+        "variant"
+      ]
+    },
     "console": {
       "type": "git",
       "url": "https://github.com/purescript/purescript-console.git",
@@ -8304,37 +8322,6 @@
         "unfoldable"
       ]
     },
-    "json-codecs": {
-      "type": "git",
-      "url": "https://github.com/jordanmartinez/purescript-json-codecs.git",
-      "rev": "8e457b08980e45b790da1c6e9715d963293e3157",
-      "dependencies": [
-        "argonaut-core",
-        "arrays",
-        "bifunctors",
-        "control",
-        "either",
-        "foldable-traversable",
-        "foreign-object",
-        "functions",
-        "identity",
-        "integers",
-        "lists",
-        "maybe",
-        "newtype",
-        "nonempty",
-        "nullable",
-        "ordered-collections",
-        "partial",
-        "prelude",
-        "record",
-        "safe-coerce",
-        "strings",
-        "these",
-        "tuples",
-        "unsafe-coerce"
-      ]
-    },
     "lazy": {
       "type": "git",
       "url": "https://github.com/purescript/purescript-lazy.git",
@@ -8344,19 +8331,6 @@
         "foldable-traversable",
         "invariant",
         "prelude"
-      ]
-    },
-    "lcg": {
-      "type": "git",
-      "url": "https://github.com/purescript/purescript-lcg.git",
-      "rev": "67c6c6483a563a59ae036d9dca0f1be2835326a5",
-      "dependencies": [
-        "effect",
-        "integers",
-        "maybe",
-        "partial",
-        "prelude",
-        "random"
       ]
     },
     "lists": {
@@ -8535,58 +8509,6 @@
         "tuples"
       ]
     },
-    "quickcheck": {
-      "type": "git",
-      "url": "https://github.com/purescript/purescript-quickcheck.git",
-      "rev": "bf5029f97e6c0d7552d3a08d2ab793a19e2c5e3d",
-      "dependencies": [
-        "arrays",
-        "console",
-        "control",
-        "effect",
-        "either",
-        "enums",
-        "exceptions",
-        "foldable-traversable",
-        "gen",
-        "identity",
-        "integers",
-        "lazy",
-        "lcg",
-        "lists",
-        "maybe",
-        "newtype",
-        "nonempty",
-        "numbers",
-        "partial",
-        "prelude",
-        "record",
-        "st",
-        "strings",
-        "tailrec",
-        "transformers",
-        "tuples",
-        "unfoldable"
-      ]
-    },
-    "quickcheck-laws": {
-      "type": "git",
-      "url": "https://github.com/purescript-contrib/purescript-quickcheck-laws.git",
-      "rev": "04f00fb78d88f38a2f2bb73b75f97ce5bf5624fc",
-      "dependencies": [
-        "enums",
-        "quickcheck"
-      ]
-    },
-    "random": {
-      "type": "git",
-      "url": "https://github.com/purescript/purescript-random.git",
-      "rev": "9540bc965a9596da02fefd9949418bb19c92533a",
-      "dependencies": [
-        "effect",
-        "integers"
-      ]
-    },
     "record": {
       "type": "git",
       "url": "https://github.com/purescript/purescript-record.git",
@@ -8711,19 +8633,6 @@
         "partial",
         "prelude",
         "refs"
-      ]
-    },
-    "these": {
-      "type": "git",
-      "url": "https://github.com/purescript-contrib/purescript-these.git",
-      "rev": "ad4de7d2bb9ce684a9dff5def6489630736985b8",
-      "dependencies": [
-        "arrays",
-        "gen",
-        "lists",
-        "quickcheck",
-        "quickcheck-laws",
-        "tuples"
       ]
     },
     "transformers": {

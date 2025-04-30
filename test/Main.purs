@@ -5,20 +5,34 @@ import Prelude
 import Control.Alt ((<|>))
 import Data.Argonaut.Encode (class EncodeJson, encodeJson)
 import Data.Array as Array
-import Data.Either (isLeft, isRight)
-import Data.Maybe (Maybe(..), isJust, isNothing)
+import Data.Codec (decode, encode)
+import Data.Codec.Argonaut (JsonCodec, prismaticCodec)
+import Data.Codec.Argonaut.Common as C
+import Data.Codec.Argonaut.Record (object)
+import Data.DateTime (DateTime)
+import Data.DateTime.Instant as Instant
+import Data.Either (Either(..), hush, isLeft, isRight)
+import Data.Maybe (Maybe(..), fromMaybe', isJust, isNothing)
+import Data.Newtype (unwrap)
 import Data.Nullable (Nullable, toMaybe)
+import Data.Number as Number
+import Data.Number.Format as NF
+import Data.Time.Duration (Milliseconds(..))
 import Data.Tuple.Nested ((/\))
 import Effect (Effect)
 import Effect.Aff (Aff, apathize, attempt, catchError, error, launchAff_, throwError)
 import Effect.Class (liftEffect)
+import Effect.Now as Now
 import Foreign.Object as Object
-import MongoDb (dropDatabase)
+import MongoDb (ObjectId, dropDatabase)
 import MongoDb as Mongo
+import MongoDb.EJSON as EJSON
+import MongoDb.ObjectId as ObjectId
 import MongoDb.Query (Query)
 import MongoDb.Query as Q
+import Partial.Unsafe (unsafeCrashWith)
 import Test.Spec (class Example, class FocusWarning, SpecT, before, describe, it, itOnly, pending)
-import Test.Spec.Assertions (shouldEqual, shouldSatisfy)
+import Test.Spec.Assertions (fail, shouldEqual, shouldSatisfy)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpec)
 import Unsafe.Coerce (unsafeCoerce)
@@ -123,7 +137,7 @@ tests = do
 
     isLeft res `shouldEqual` true
 
-  fit "insertMany" $ \{ col } -> do
+  it "insertMany" $ \{ col } -> do
     let docs = [ makeDoc { x: 1 }, makeDoc { x: 2 } ]
     result <- Mongo.insertMany col docs
 
@@ -275,9 +289,11 @@ tests = do
     session <- Mongo.startSession client
     let insert = Mongo.insertOneWith _ { session = Just session } col
 
-    Mongo.withTransaction session do
+    r <- Mongo.withTransaction session do
       _ <- insert (makeDoc { x: 1 })
-      pure unit
+      pure { x: 1 }
+
+    r.x `shouldEqual` 1
 
     Mongo.endSession session
     found <- Mongo.findOne col (filterBy { x: 1 })
@@ -308,6 +324,50 @@ tests = do
 
     pure unit
 
+objectIdCanonical :: JsonCodec ObjectId
+objectIdCanonical =
+  prismaticCodec "ObjectId"
+    (\{ "$oid": str } -> hush $ ObjectId.fromString str)
+    (\id -> { "$oid": ObjectId.toString id })
+    (object "EJSON.ObjectId" { "$oid": C.string })
+
+-- Converts DateTime from/to canonical EJSON representation
+--
+-- {"$date": {"$numberLong": "<millis>"}
+dateCanonical :: JsonCodec DateTime
+dateCanonical =
+  prismaticCodec "DateTime"
+    (\{ "$date": { "$numberLong": val } } -> toDate val)
+    (\dt -> { "$date": { "$numberLong": fromDate dt } })
+    (object "EJSON.Date" { "$date": object "Millis" { "$numberLong": C.string } })
+  where
+  fromDate = NF.toStringWith (NF.fixed 0)
+    <<< unwrap
+    <<< Instant.unInstant
+    <<< Instant.fromDateTime
+
+  toDate millis = (Milliseconds <$> Number.fromString millis) >>= Instant.instant <#>
+    Instant.toDateTime
+
+unsafeFromJust :: forall a. Maybe a -> a
+unsafeFromJust x = fromMaybe' (\_ -> unsafeCrashWith "Not Just") x
+
+--testCodec :: ∀ a. JsonCodec a  -> a -> Boolean
+testCodec :: ∀ a. Eq a => JsonCodec a -> a -> Aff Unit
+testCodec codec val = do
+  let encoded = encode codec val
+  case EJSON.deserialize encoded of
+    Right doc -> do
+      let json = EJSON.serialize doc
+      case decode codec json of
+        Right decoded -> do
+          let res = decoded == val
+          res `shouldEqual` true
+        Left err ->
+          fail (show err)
+    Left err ->
+      fail (show err)
+
 main :: Effect Unit
 main = launchAff_ $ do
   runSpec [ consoleReporter ] do
@@ -326,3 +386,10 @@ main = launchAff_ $ do
             pure { client, db, col, colName }
         )
         do tests
+      describe "EJSON Codecs" do
+        it "dateCanonical" do
+          now <- liftEffect $ Now.nowDateTime
+          testCodec dateCanonical now
+        it "objectIdCanonical" do
+          id <- liftEffect $ ObjectId.generate
+          testCodec objectIdCanonical id
