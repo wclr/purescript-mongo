@@ -5,20 +5,25 @@ import Prelude
 import Control.Alt ((<|>))
 import Data.Argonaut.Encode (class EncodeJson, encodeJson)
 import Data.Array as Array
-import Data.Codec (decode, encode)
+import Data.Bifunctor (lmap)
+import Data.Codec (codec', decode, encode)
 import Data.Codec.Argonaut (JsonCodec, prismaticCodec)
+import Data.Codec.Argonaut (JsonDecodeError(..))
 import Data.Codec.Argonaut.Common as C
 import Data.Codec.Argonaut.Record (object)
 import Data.DateTime (DateTime)
 import Data.DateTime.Instant as Instant
-import Data.Either (Either(..), hush, isLeft, isRight)
-import Data.Maybe (Maybe(..), fromMaybe', isJust, isNothing)
+import Data.Either (Either(..), either, hush, isLeft, isRight)
+import Data.Int as Int
+import Data.Maybe (Maybe(..), fromMaybe', isJust, isNothing, maybe)
 import Data.Newtype (unwrap)
 import Data.Nullable (Nullable, toMaybe)
 import Data.Number as Number
 import Data.Number.Format as NF
+import Data.String (toLower)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Tuple.Nested ((/\))
+import Debug (spy)
 import Effect (Effect)
 import Effect.Aff (Aff, apathize, attempt, catchError, error, launchAff_, throwError)
 import Effect.Class (liftEffect)
@@ -28,10 +33,11 @@ import MongoDb (ObjectId, dropDatabase)
 import MongoDb as Mongo
 import MongoDb.EJSON as EJSON
 import MongoDb.ObjectId as ObjectId
+import MongoDb.ObjectId.HexString as HexString
 import MongoDb.Query (Query)
 import MongoDb.Query as Q
 import Partial.Unsafe (unsafeCrashWith)
-import Test.Spec (class Example, class FocusWarning, SpecT, before, describe, it, itOnly, pending)
+import Test.Spec (class Example, class FocusWarning, SpecT, before, describe, describeOnly, it, itOnly, pending)
 import Test.Spec.Assertions (fail, shouldEqual, shouldSatisfy)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpec)
@@ -324,6 +330,53 @@ tests = do
 
     pure unit
 
+  it "Retrieves stored double" \{ db, col } -> do
+    let doc = makeDoc { x: 1.0, _id: 1 }
+    _ <- Mongo.insertOne col doc
+
+    found <- Mongo.findOne col (Mongo.byId 1)
+    let codec = object "obj" { x: numberCanonical }
+    case found of
+      Just docFound -> do
+        let decoded = decode codec $ spy "ser" $ EJSON.serialize docFound
+        isRight (spy "decoded" decoded) `shouldEqual` true
+
+      Nothing ->
+        fail (show "Not found")
+
+intCanonical :: JsonCodec Int
+intCanonical =
+  prismaticCodec "Int"
+    (\{ "$numberInt": str } -> Int.fromString str)
+    (\num -> { "$numberInt": Int.toStringAs Int.decimal num })
+    (object "EJSON.Int" { "$numberInt": C.string })
+
+numberCanonical' :: JsonCodec Number
+numberCanonical' =
+  prismaticCodec "Number"
+    (\{ "$numberDouble": str } -> Number.fromString str)
+    (\num -> { "$numberDouble": NF.toString num })
+    (object "EJSON.Number" { "$numberDouble": C.string })
+
+numberCanonical :: JsonCodec Number
+numberCanonical =
+  -- If we store number as Double but it is without fraction (i.e 1.0), the
+  -- driver will retrieve it as plain number (not JS Double type) and
+  -- EJSON.serialize will convert it to {$numberInt: 1} (this is actually a
+  -- buggy behaviour of the driver).
+  codec'
+    ( \j → decode doubleCodec j <#> _."$numberDouble"
+        # either (\_ -> decode intCodec j <#> _."$numberInt") Right
+        # either Left (maybe (Left $ UnexpectedValue j) Right <<< Number.fromString)
+        # lmap (Named "Number")
+
+    )
+    (encode doubleCodec <<< \n -> { "$numberDouble": NF.toString n })
+
+  where
+  doubleCodec = (object "EJSON.Number" { "$numberDouble": C.string })
+  intCodec = (object "EJSON.Number" { "$numberInt": C.string })
+
 objectIdCanonical :: JsonCodec ObjectId
 objectIdCanonical =
   prismaticCodec "ObjectId"
@@ -332,7 +385,6 @@ objectIdCanonical =
     (object "EJSON.ObjectId" { "$oid": C.string })
 
 -- Converts DateTime from/to canonical EJSON representation
---
 -- {"$date": {"$numberLong": "<millis>"}
 dateCanonical :: JsonCodec DateTime
 dateCanonical =
@@ -386,6 +438,34 @@ main = launchAff_ $ do
             pure { client, db, col, colName }
         )
         do tests
+
+      describeOnly "HexString" do
+        it "do not make  from invalid string" do
+          (HexString.toString <$> HexString.fromString "x339x") `shouldEqual` Nothing
+
+        it "makes from valid string" do
+          let valid = "507f191e810c19729de860ea"
+          (HexString.toString <$> HexString.fromString valid) `shouldEqual` Just valid
+
+        it "makes from valid string" do
+          let valid = "507f191e810c19729de860ea"
+          (HexString.toString <$> HexString.fromString valid) `shouldEqual` Just valid
+
+        it "makes ObjectId from HexString" do
+          let valid = "507f191e810c19729de860ea"
+          (ObjectId.toString <<< ObjectId.fromHexString <$> HexString.fromString valid)
+            `shouldEqual` Just valid
+
+        it "makes valid HexString from string ignoring Hex letters case" do
+          let valid = "507f191e810C19729de860eA"
+          (ObjectId.toString <<< ObjectId.fromHexString <$> HexString.fromString valid)
+            `shouldEqual` Just (toLower valid)
+
+        it "makes HexString from ObjectId" do
+          id <- liftEffect $ ObjectId.generate
+          (HexString.toString $ ObjectId.toHexString id)
+            `shouldEqual` ObjectId.toString id
+
       describe "EJSON Codecs" do
         it "dateCanonical" do
           now <- liftEffect $ Now.nowDateTime
@@ -393,3 +473,11 @@ main = launchAff_ $ do
         it "objectIdCanonical" do
           id <- liftEffect $ ObjectId.generate
           testCodec objectIdCanonical id
+        it "intCanonical" do
+          testCodec intCanonical 10
+          testCodec intCanonical (-10)
+          testCodec intCanonical (0x10)
+
+        it "numberCanonical" do
+          testCodec numberCanonical 10.123
+          testCodec numberCanonical (-10.0)

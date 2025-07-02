@@ -25,6 +25,16 @@ export const generate = () => {
   return new ObjectId()
 }
 
+/**
+ * 
+ * @param {string} s 
+ * @returns 
+ */
+export const fromHexString = s => {
+  return ObjectId.createFromHexString(s)
+}
+
+
 //@ts-ignore
 export const fromString_ = left => right => s => {
   try {
